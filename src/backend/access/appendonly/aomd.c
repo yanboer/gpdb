@@ -227,7 +227,7 @@ TruncateAOSegmentFile(File fd, Relation rel, int32 segFileNum, int64 offset, AOV
 	if (file_truncate_hook)
 	{
 		RelFileNodeBackend rnode = {.node = rel->rd_node, .backend = rel->rd_backend};
-		(*file_truncate_hook)(&(SMgrRelationData){.smgr_rnode = rnode}, MAIN_FORKNUM, offset / BLCKSZ);
+		(*file_truncate_hook)(rnode);
 	}
 }
 
@@ -512,7 +512,7 @@ copy_append_only_data(RelFileNode src, RelFileNode dst,
 	if (file_extend_hook)
 	{
 		RelFileNodeBackend rnode = {.node = dst, .backend = backendid};
-		(*file_extend_hook)(&(SMgrRelationData){.smgr_rnode = rnode}, MAIN_FORKNUM, 0, NULL, true);
+		(*file_extend_hook)(&(SMgrRelationData){.smgr_rnode = rnode}, MAIN_FORKNUM, 0, NULL);
 	}
 }
 

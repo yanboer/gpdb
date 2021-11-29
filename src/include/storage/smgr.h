@@ -174,7 +174,7 @@ extern void AtEOXact_SMgr(void);
 typedef void (*file_create_hook_type)(RelFileNodeBackend rnode);
 extern PGDLLIMPORT file_create_hook_type file_create_hook;
 
-typedef void (*file_extend_hook_type)(RelFileNodeBackend rnode);
+typedef char* (*file_extend_hook_type)(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum, char *buffer);
 extern PGDLLIMPORT file_extend_hook_type file_extend_hook;
 
 typedef void (*file_truncate_hook_type)(RelFileNodeBackend rnode);
@@ -182,5 +182,14 @@ extern PGDLLIMPORT file_truncate_hook_type file_truncate_hook;
 
 typedef void (*file_unlink_hook_type)(RelFileNodeBackend rnode);
 extern PGDLLIMPORT file_unlink_hook_type file_unlink_hook;
+
+typedef void (*file_read_hook_type)(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum, char *buffer);
+extern PGDLLIMPORT file_read_hook_type file_read_hook;
+
+typedef char* (*file_write_hook_type)(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum, char *buffer);
+extern PGDLLIMPORT file_write_hook_type file_write_hook;
+
+typedef void (*file_writeback_hook_type)(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum, BlockNumber nblocks);
+extern PGDLLIMPORT file_writeback_hook_type file_writeback_hook;
 
 #endif							/* SMGR_H */
