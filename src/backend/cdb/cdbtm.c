@@ -676,6 +676,35 @@ doNotifyingCommitPrepared(void)
 	LWLockRelease(TwophaseCommitLock);
 }
 
+static bool 
+PG_TRY_IN_LOOP(int retry, MemoryContext oldcontext) {
+	bool succeeded;
+	int savedInterruptHoldoffCount = InterruptHoldoffCount;
+	PG_TRY();
+	{
+		MyTmGxactLocal->dtxSegments = cdbcomponent_getCdbComponentsList();
+		succeeded = currentDtxDispatchProtocolCommand(DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED, true);
+		if (!succeeded)
+			ereport(WARNING,
+					(errmsg("the distributed transaction 'Abort' broadcast "
+							"failed to one or more segments. Retrying ... try %d", retry),
+					TM_ERRDETAIL));
+	}
+	PG_CATCH();
+	{
+		/*
+		 * restore the previous value, which is reset to 0 in errfinish.
+		 */
+		MemoryContextSwitchTo(oldcontext);
+		InterruptHoldoffCount = savedInterruptHoldoffCount;
+		succeeded = false;
+		FlushErrorState();
+	}
+	PG_END_TRY();
+	return succeeded;
+}
+
+
 static void
 retryAbortPrepared(void)
 {
@@ -710,29 +739,8 @@ retryAbortPrepared(void)
 		 */
 		CheckForResetSession();
 
-		savedInterruptHoldoffCount = InterruptHoldoffCount;
+		succeeded = PG_TRY_IN_LOOP(retry, oldcontext);
 
-		PG_TRY();
-		{
-			MyTmGxactLocal->dtxSegments = cdbcomponent_getCdbComponentsList();
-			succeeded = currentDtxDispatchProtocolCommand(DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED, true);
-			if (!succeeded)
-				ereport(WARNING,
-						(errmsg("the distributed transaction 'Abort' broadcast "
-								"failed to one or more segments. Retrying ... try %d", retry),
-						TM_ERRDETAIL));
-		}
-		PG_CATCH();
-		{
-			/*
-			 * restore the previous value, which is reset to 0 in errfinish.
-			 */
-			MemoryContextSwitchTo(oldcontext);
-			InterruptHoldoffCount = savedInterruptHoldoffCount;
-			succeeded = false;
-			FlushErrorState();
-		}
-		PG_END_TRY();
 	}
 
 	if (!succeeded)
