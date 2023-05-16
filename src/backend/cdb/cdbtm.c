@@ -677,7 +677,8 @@ doNotifyingCommitPrepared(void)
 }
 
 static bool 
-PG_TRY_IN_LOOP(int retry, MemoryContext oldcontext) {
+PG_TRY_IN_LOOP(int retry, MemoryContext oldcontext)
+{
 	bool succeeded;
 	int savedInterruptHoldoffCount = InterruptHoldoffCount;
 	PG_TRY();
@@ -710,7 +711,6 @@ retryAbortPrepared(void)
 {
 	int			retry = 0;
 	bool		succeeded = false;
-	volatile int savedInterruptHoldoffCount;
 	MemoryContext oldcontext = CurrentMemoryContext;;
 
 	while (!succeeded && dtx_phase2_retry_count > retry++)
