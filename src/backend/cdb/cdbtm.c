@@ -677,7 +677,7 @@ doNotifyingCommitPrepared(void)
 }
 
 static bool 
-PG_TRY_IN_LOOP(int retry, MemoryContext oldcontext)
+cdb_dispatch_retry_abort_prepared(int retry, MemoryContext oldcontext)
 {
 	bool succeeded;
 	int savedInterruptHoldoffCount = InterruptHoldoffCount;
@@ -739,7 +739,7 @@ retryAbortPrepared(void)
 		 */
 		CheckForResetSession();
 
-		succeeded = PG_TRY_IN_LOOP(retry, oldcontext);
+		succeeded = cdb_dispatch_retry_abort_prepared(retry, oldcontext);
 
 	}
 
