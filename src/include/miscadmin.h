@@ -106,7 +106,8 @@ extern PGDLLIMPORT volatile int32 QueryCancelHoldoffCount;
 extern PGDLLIMPORT volatile int32 CritSectionCount;
 
 /* in tcop/postgres.c */
-extern void ProcessInterrupts(const char* filename, int lineno);
+extern void ProcessInterruptsImpl(const char* filename, int lineno);
+#define ProcessInterrupts() (ProcessInterruptsImpl(__FILE__, __LINE__))
 
 /* Hook get notified when QueryCancelPending or ProcDiePending is raised */
 typedef void (*cancel_pending_hook_type) (void);
@@ -162,7 +163,7 @@ CancelRequested()
 #define CHECK_FOR_INTERRUPTS() \
 do { \
 	if (INTERRUPTS_PENDING_CONDITION()) \
-		ProcessInterrupts(__FILE__, __LINE__); \
+		ProcessInterruptsImpl(__FILE__, __LINE__); \
 	BackoffBackendTick(); \
 	ReportOOMConsumption(); \
 	RedZoneHandler_DetectRunawaySession();\

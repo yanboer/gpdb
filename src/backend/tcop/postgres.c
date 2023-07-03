@@ -3548,7 +3548,7 @@ die(SIGNAL_ARGS)
 	 * effort just for the benefit of single user mode.
 	 */
 	if (DoingCommandRead && whereToSendOutput != DestRemote)
-		ProcessInterrupts(__FILE__, __LINE__);
+		ProcessInterruptsImpl(__FILE__, __LINE__);
 
 	errno = save_errno;
 }
@@ -3810,7 +3810,7 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
  * any pre-existing one will have been serviced.)
  */
 void
-ProcessInterrupts(const char* filename, int lineno)
+ProcessInterruptsImpl(const char* filename, int lineno)
 {
 	/* OK to accept any interrupts now? */
 	if (InterruptHoldoffCount != 0 || CritSectionCount != 0)

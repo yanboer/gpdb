@@ -548,7 +548,7 @@ VmemTracker_ReserveVmem(int64 newlyRequestedBytes)
 		if (vmem_process_interrupt && InterruptPending)
 		{
 			/* ProcessInterrupts should check for InterruptHoldoffCount and CritSectionCount */
-			ProcessInterrupts(__FILE__, __LINE__);
+			ProcessInterruptsImpl(__FILE__, __LINE__);
 		}
 
 		/*
