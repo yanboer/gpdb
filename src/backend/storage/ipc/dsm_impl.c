@@ -63,6 +63,7 @@
 #include <sys/shm.h>
 #endif
 
+#include "cdb/cdbvars.h"
 #include "common/file_perm.h"
 #include "libpq/pqsignal.h"
 #include "pgstat.h"
@@ -219,7 +220,20 @@ dsm_impl_posix(dsm_op op, dsm_handle handle, Size request_size,
 	int			fd;
 	char	   *address;
 
-	snprintf(name, 64, "/PostgreSQL.%u", handle);
+	/*
+	 * Adding segindex to the name. As for gp, there may be several
+	 * segments running on the same host, which can lead to name
+	 * collisions between those processes.
+	 *
+	 * GpIdentity.segindex can only be set value when postmaster
+	 * starts, so it is safe to use it here.
+	 *
+	 * However, this increases the length of the name to exceed
+	 * its max available length. For instance, on maxos, the
+	 * name's max length is 31. Therefor, change the prefix from
+	 * PostgreSQL to GP , which can resolve the above issue.
+	 */
+	snprintf(name, 64, "/GP.%d.%u", GpIdentity.segindex, handle);
 
 	/* Handle teardown cases. */
 	if (op == DSM_OP_DETACH || op == DSM_OP_DESTROY)
