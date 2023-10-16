@@ -16,8 +16,8 @@
          filename format to use when uploading S3 files for <codeph>INSERT</codeph> operations to
          writable tables.</p>
       <p>The <codeph>s3</codeph> protocol also supports <xref
-            href="https://www.emc.com/en-us/storage/ecs/index.htm" format="html" scope="external"
-            >Dell EMC Elastic Cloud Storage</xref> (ECS), an Amazon S3 compatible service. </p>
+            href="https://www.dell.com/en-us/dt/learn/data-storage/ecs.htm" format="html" scope="external"
+            >Dell Elastic Cloud Storage</xref> (ECS), an Amazon S3 compatible service. </p>
       <p>This topic contains the sections:<ul id="ul_o15_22r_kx">
             <li><xref href="#amazon-emr/s3_prereq" format="dita"/></li>
             <li><xref href="#amazon-emr/section_stk_c2r_kx" format="dita"/></li>

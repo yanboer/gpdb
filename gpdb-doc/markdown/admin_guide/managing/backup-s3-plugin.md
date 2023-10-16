@@ -2,7 +2,7 @@
 
 The S3 storage plugin application lets you use an Amazon Simple Storage Service \(Amazon S3\) location to store and retrieve backups when you run [gpbackup](../../utility_guide/admin_utilities/gpbackup.html) and [gprestore](../../utility_guide/admin_utilities/gprestore.html). Amazon S3 provides secure, durable, highly-scalable object storage.
 
-The S3 storage plugin can also connect to an Amazon S3 compatible service such as [Dell EMC Elastic Cloud Storage](https://www.emc.com/en-us/storage/ecs/index.htm) \(ECS\) and [Minio](https://www.minio.io/).
+The S3 storage plugin can also connect to an Amazon S3 compatible service such as [Dell Elastic Cloud Storage](https://www.dell.com/en-us/dt/learn/data-storage/ecs.htm) \(ECS\) and [Minio](https://www.minio.io/).
 
 To use the S3 storage plugin application, you specify the location of the plugin and the S3 login and backup location in a configuration file. When you run `gpbackup` or `gprestore`, you specify the configuration file with the option `--plugin-config`. For information about the configuration file, see [S3 Storage Plugin Configuration File Format](#s3-plugin-config).
 

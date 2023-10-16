@@ -6,7 +6,7 @@ Amazon Simple Storage Service \(Amazon S3\) provides secure, durable, highly-sca
 
 You can define read-only external tables that use existing data files in the S3 bucket for table data, or writable external tables that store the data from INSERT operations to files in the S3 bucket. Greenplum Database uses the S3 URL and prefix specified in the protocol URL either to select one or more files for a read-only table, or to define the location and filename format to use when uploading S3 files for `INSERT` operations to writable tables.
 
-The `s3` protocol also supports [Dell EMC Elastic Cloud Storage](https://www.emc.com/en-us/storage/ecs/index.htm) \(ECS\), an Amazon S3 compatible service.
+The `s3` protocol also supports [Dell Elastic Cloud Storage](https://www.dell.com/en-us/dt/learn/data-storage/ecs.htm) \(ECS\), an Amazon S3 compatible service.
 
 This topic contains the sections:
 
