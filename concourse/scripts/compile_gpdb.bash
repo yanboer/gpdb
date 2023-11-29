@@ -96,8 +96,8 @@ function include_dependencies() {
 	header_search_path=( /usr/local/include/ /usr/include/ )
 	vendored_headers=(zstd*.h uv.h uv )
 	pkgconfigs=(libzstd.pc libuv.pc quicklz.pc)
-	# rocky9/oel9/rhel9 won't vendor zstd because of rsync on these platofrm does not work libzstd 1.3.7
-	if [[ ${BLD_ARCH} == "rhel9"* ]]; then
+	# rocky9/oel9/rhel9 & rocky8/rhel8 won't vendor zstd because of rsync on these platform does not work libzstd 1.3.7
+	if [[ ${BLD_ARCH} == "rhel9"* ]] || [[ ${BLD_ARCH} == "rhel8"* ]] ; then
 	  vendored_libs=(libquicklz.so{,.1,.1.5.0} libuv.so{,.1,.1.0.0} libxerces-c{,-3.1}.so)
 	else
 	vendored_libs=(libquicklz.so{,.1,.1.5.0} libzstd.so{,.1,.1.3.7} libuv.so{,.1,.1.0.0} libxerces-c{,-3.1}.so)
