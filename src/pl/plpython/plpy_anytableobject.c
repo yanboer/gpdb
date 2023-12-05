@@ -7,6 +7,7 @@
 #include "plpy_main.h"
 
 #include "plpy_anytableobject.h"
+#include "utils/palloc.h"
 
 static PyObject *PLy_anytable_iternext(PyObject *self);
 static PyObject *PLy_anytable_get_column_name(PyObject *self, PyObject *args);
@@ -97,6 +98,9 @@ PLy_anytable_iternext(PyObject *self) {
 		PyObject *item = PLy_input_convert(&anytable->outinfo[i], attr);
 		PyTuple_SetItem(rettuple, i, item);
 	}
+
+	/* AnyTable_GetNextTuple() will alloc memory, relase it */
+	pfree(heap);
 
 	return rettuple;
 }
