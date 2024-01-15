@@ -30,6 +30,7 @@ static uint8 *BufferedReadUseBeforeBuffer(
 							int32 maxReadAheadLen,
 							int32 *nextBufferLen);
 
+ao_file_read_hook_type ao_file_read_hook = NULL;
 
 /*
  * Determines the amount of memory to supply for
@@ -198,6 +199,10 @@ BufferedReadIo(
 			pgstat_count_buffer_read_time(INSTR_TIME_GET_MICROSEC(io_time));
 			INSTR_TIME_ADD(pgBufferUsage.blk_read_time, io_time);
 		}
+
+		/* post process the buffer by extension */
+		if (ao_file_read_hook)
+			ao_file_read_hook(bufferedRead->file, (char *)largeReadMemory, actualLen, bufferedRead->fileOff);
 
 		if (actualLen == 0)
 			ereport(ERROR, (errcode_for_file_access(),
