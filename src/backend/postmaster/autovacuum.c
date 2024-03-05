@@ -3291,6 +3291,7 @@ relation_needs_vacanalyze(Oid relid,
 		if (!IsSystemClass(relid, classForm))
 			*dovacuum = false;
 	}
+	/* GPDB-patch: Do not disable autovacuum for relations */
 }
 
 /*

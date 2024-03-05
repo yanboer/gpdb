@@ -45,6 +45,7 @@ typedef enum AutovacuumScope
 {
 	AV_SCOPE_CATALOG,
 	AV_SCOPE_CATALOG_AO_AUX,
+	AV_SCOPE_ALL,
 } AutovacuumScope;
 
 /* autovacuum launcher PID, only valid when worker is shutting down */

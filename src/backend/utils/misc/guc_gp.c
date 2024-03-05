@@ -562,6 +562,7 @@ static const struct config_enum_entry optimizer_join_order_options[] = {
 static const struct config_enum_entry gp_autovacuum_scope_options[] = {
 	{"catalog", AV_SCOPE_CATALOG},
 	{"catalog_ao_aux", AV_SCOPE_CATALOG_AO_AUX},
+	{"all", AV_SCOPE_ALL},
 	{NULL, 0}
 };
 
