@@ -653,7 +653,7 @@ dumpSharedLocalSnapshot_forCursor(void)
 	pDump->distributedXid = src->distributedXid;
 	pDump->localXid = src->fullXid;
 
-	elog(LOG, "Dump syncmate : %u snapshot to slot %d", src->segmateSync, id);
+	elog(DEBUG1, "Dump syncmate : %u snapshot to slot %d", src->segmateSync, id);
 
 	src->cur_dump_id =
 		(src->cur_dump_id + 1) % SNAPSHOTDUMPARRAYSZ;
