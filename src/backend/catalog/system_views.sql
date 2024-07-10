@@ -1498,7 +1498,7 @@ GRANT SELECT ON gp_pgdatabase TO PUBLIC;
 ------------------------------------------------------------------
 CREATE OR REPLACE VIEW gp_distributed_xacts AS 
     SELECT *
-      FROM gp_distributed_xacts() AS L(distributed_xid xid, state text, gp_session_id int, xmin_distributed_snapshot xid);
+      FROM gp_distributed_xacts() AS L(distributed_xid bigint, state text, gp_session_id int, xmin_distributed_snapshot bigint);
 
 GRANT SELECT ON gp_distributed_xacts TO PUBLIC;
 
@@ -1511,7 +1511,7 @@ GRANT SELECT ON gp_transaction_log TO PUBLIC;
 
 CREATE OR REPLACE VIEW gp_distributed_log AS 
     SELECT *
-      FROM gp_distributed_log() AS L(segment_id smallint, dbid smallint, distributed_xid xid, status text, local_transaction xid);
+      FROM gp_distributed_log() AS L(segment_id smallint, dbid smallint, distributed_xid bigint, status text, local_transaction xid);
 
 GRANT SELECT ON gp_distributed_log TO PUBLIC;
 

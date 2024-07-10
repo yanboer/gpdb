@@ -36,6 +36,8 @@ gp_distributed_log(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 	Context *context;
 
+	elog(LOG, "gp_distributed_log called. ");
+
 	if (SRF_IS_FIRSTCALL())
 	{
 		TupleDesc	tupdesc;
@@ -58,7 +60,7 @@ gp_distributed_log(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "dbid",
 						   INT2OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "distributed_xid",
-						   XIDOID, -1, 0);
+						   INT8OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "status",
 						   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "local_transaction",
@@ -113,7 +115,7 @@ gp_distributed_log(PG_FUNCTION_ARGS)
 
 			values[0] = Int16GetDatum((int16)GpIdentity.segindex);
 			values[1] = Int16GetDatum((int16)GpIdentity.dbid);
-			values[2] = TransactionIdGetDatum(distribXid);
+			values[2] = Int64GetDatum(distribXid);
 
 			/*
 			 * For now, we only log committed distributed transactions.
