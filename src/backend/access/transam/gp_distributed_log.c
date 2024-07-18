@@ -36,6 +36,8 @@ gp_distributed_log(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 	Context *context;
 
+	elog(LOG, "gp_distributed_log called. ");
+
 	if (SRF_IS_FIRSTCALL())
 	{
 		TupleDesc	tupdesc;

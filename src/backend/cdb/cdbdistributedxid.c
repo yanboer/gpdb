@@ -21,6 +21,8 @@ gp_distributed_xid(PG_FUNCTION_ARGS pg_attribute_unused())
 {
 	DistributedTransactionId xid = getDistributedTransactionId();
 
+	elog(LOG, "gp_distributed_xid called. ");
+
 	PG_RETURN_XID(xid);
 
 }

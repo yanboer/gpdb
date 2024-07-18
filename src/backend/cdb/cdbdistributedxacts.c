@@ -28,6 +28,8 @@ gp_distributed_xacts__(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 	TMGALLXACTSTATUS *allDistributedXactStatus;
 
+	elog(LOG, "gp_distributed_xacts__ called. ");
+
 	if (SRF_IS_FIRSTCALL())
 	{
 		TupleDesc	tupdesc;
