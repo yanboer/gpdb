@@ -230,8 +230,8 @@ gp_dist_wait_status(PG_FUNCTION_ARGS)
 
 		while (ctx->holder < ctx->lockData->nelements)
 		{
-			TransactionId w_dxid;
-			TransactionId h_dxid;
+			DistributedTransactionId w_dxid;
+			DistributedTransactionId h_dxid;
 			const char   *locktypename;
 			int			holder = ctx->holder++;
 			LockInstanceData	   *h_lock = &ctx->lockData->locks[holder];
