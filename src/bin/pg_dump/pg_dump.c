@@ -1921,7 +1921,7 @@ selectDumpableFunction(FuncInfo *finfo, Archive *fout)
 			simple_oid_list_member(&function_include_oids, finfo->dobj.catId.oid))
 		finfo->dobj.dump = DUMP_COMPONENT_ALL;
 	else if (finfo->dobj.namespace)
-		finfo->dobj.dump = finfo->dobj.namespace->dobj.dump;
+		finfo->dobj.dump = finfo->dobj.namespace->dobj.dump_contains;
 	else
 		finfo->dobj.dump = DUMP_COMPONENT_ALL;
 }
