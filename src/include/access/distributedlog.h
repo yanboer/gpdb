@@ -85,5 +85,6 @@ extern const char *DistributedLog_identify(uint8 info);
 extern void DistributedLog_GetDistributedXid(
 				TransactionId 						localXid,
 				DistributedTransactionId 			*distribXid);
+extern long check_distributedlog_duration(TimestampTz start_time, TimestampTz stop_time);
 
 #endif							/* DISTRIBUTEDLOG_H */

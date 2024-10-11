@@ -819,5 +819,8 @@ extern void DispatchSyncPGVariable(struct config_generic * gconfig);
 
 /* distributed log truncate */
 extern bool gp_print_dlog_truncate_info;
+extern bool gp_print_dlog_advance_xid_info;
+extern int	gp_log_distributedlogcontrollock_held_time;
+extern int  gp_advance_dlog_xid_limit;
 
 #endif							/* GUC_H */

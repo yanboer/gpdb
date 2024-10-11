@@ -449,6 +449,9 @@ bool		gp_enable_blkdir_sampling;
 
 /* distributed log truncate */
 bool gp_print_dlog_truncate_info = false;
+bool gp_print_dlog_advance_xid_info = false;
+int gp_log_distributedlogcontrollock_held_time = 1000;
+int gp_advance_dlog_xid_limit = 40960;
 
 static const struct config_enum_entry gp_log_format_options[] = {
 	{"text", 0},
@@ -3087,6 +3090,17 @@ struct config_bool ConfigureNamesBool_gp[] =
         NULL, NULL, NULL
     },
 
+    {
+        {"gp_print_dlog_advance_xid_info", PGC_SUSET, AUTOVACUUM,
+        gettext_noop("Print distributedlog advance xid infomation to server log."),
+        NULL,
+        GUC_NOT_IN_SAMPLE
+        },
+        &gp_print_dlog_advance_xid_info,
+        false,
+        NULL, NULL, NULL
+    },
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -4368,6 +4382,26 @@ struct config_int ConfigureNamesInt_gp[] =
 		NULL, NULL, NULL
 	},
 #endif
+
+    {
+        {"gp_log_distributedlogcontrollock_held_time", PGC_SUSET, DEVELOPER_OPTIONS,
+        	gettext_noop("Print DistributedLogControlLock exclusive lock infomation to server log."),
+        	NULL
+        },
+        &gp_log_distributedlogcontrollock_held_time,
+		1000, -1, INT_MAX,
+        NULL, NULL, NULL
+    },
+
+    {
+        {"gp_advance_dlog_xid_limit", PGC_SUSET, DEVELOPER_OPTIONS,
+        	gettext_noop("Limit the number of xids that distributedlog advance."),
+        	NULL
+        },
+        &gp_advance_dlog_xid_limit,
+		40960, -1, INT_MAX,
+        NULL, NULL, NULL
+    },
 
 	/* End-of-list marker */
 	{

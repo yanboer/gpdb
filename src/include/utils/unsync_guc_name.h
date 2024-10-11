@@ -566,3 +566,6 @@
 		"xmloption",
 		"max_slot_wal_keep_size",
 		"gp_print_dlog_truncate_info",
+		"gp_print_dlog_advance_xid_info",
+		"gp_log_distributedlogcontrollock_held_time",
+		"gp_advance_dlog_xid_limit",

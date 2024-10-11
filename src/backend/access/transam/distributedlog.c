@@ -37,6 +37,7 @@
 #include "storage/shmem.h"
 #include "utils/faultinjector.h"
 #include "utils/guc.h"
+#include "utils/timestamp.h"
 #include "miscadmin.h"
 #include "libpq/libpq-be.h" /* struct Port */
 
@@ -192,8 +193,12 @@ DistributedLog_AdvanceOldestXmin(TransactionId oldestLocalXmin,
 	TransactionId oldOldestXmin;
 	int			currPage;
 	int			slotno;
+	int         counter = PG_INT32_MAX;
 	bool		DistributedLogControlLockHeldByMe = false;
 	DistributedLogEntry *entries = NULL;
+
+	TimestampTz lockHeldStartTz;
+	long duration;
 
 	Assert(!IS_QUERY_DISPATCHER());
 	Assert(TransactionIdIsNormal(oldestLocalXmin));
@@ -211,6 +216,23 @@ DistributedLog_AdvanceOldestXmin(TransactionId oldestLocalXmin,
 	oldestXmin = (TransactionId)pg_atomic_read_u32((pg_atomic_uint32 *)&DistributedLogShared->oldestXmin);
 	oldOldestXmin = oldestXmin;
 	Assert(oldestXmin != InvalidTransactionId);
+
+	if (!TransactionIdEquals(oldestXmin, oldestLocalXmin))
+	{
+		elog((gp_print_dlog_advance_xid_info ? LOG : DEBUG5), "DistributedLog_AdvanceOldestXmin want advance oldestXmin from %d to %d. ", 
+			oldestXmin, oldestLocalXmin);
+	}
+	lockHeldStartTz = GetCurrentTimestamp();
+
+	/* Limit the number of xids that distributedlog advance. 4096 about 1 page. */
+	if (gp_advance_dlog_xid_limit > 0 && gp_advance_dlog_xid_limit < 4096)
+	{
+		counter = 4096;
+	}
+	else if (gp_advance_dlog_xid_limit >= 4096)
+	{
+		counter = gp_advance_dlog_xid_limit;
+	}
 
 	/*
 	 * oldestXmin (DistributedLogShared->oldestXmin) can be higher than
@@ -272,12 +294,22 @@ DistributedLog_AdvanceOldestXmin(TransactionId oldestLocalXmin,
 			break;
 
 		TransactionIdAdvance(oldestXmin);
+
+		/* limit advance xid. */
+		if (--counter < 0)
+		{
+			elog((gp_print_dlog_truncate_info ? LOG : DEBUG5), "DistributedLog_AdvanceOldestXmin limit advance xid from %d to %d.", oldOldestXmin, oldestXmin);
+			break;
+		}
 	}
 	if (DistributedLogControlLockHeldByMe)
 	{
 		Assert(LWLockHeldByMe(DistributedLogControlLock));
 		LWLockRelease(DistributedLogControlLock);
 	}
+
+	duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+	elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_AdvanceOldestXmin held DistributedLogControlLock share lock with %ld ms.",  duration);
 
 	/*
 	 * The shared oldestXmin (DistributedLogShared->oldestXmin) may be updated
@@ -308,6 +340,11 @@ DistributedLog_AdvanceOldestXmin(TransactionId oldestLocalXmin,
 	}
 
 	LWLockRelease(DistributedLogTruncateLock);
+	if (!TransactionIdEquals(oldOldestXmin, oldestXmin))
+	{
+		elog((gp_print_dlog_advance_xid_info ? LOG : DEBUG5), "DistributedLog_AdvanceOldestXmin actually advance oldestXmin from %d to %d. ", 
+			oldOldestXmin, oldestXmin);
+	}
 
 	return oldestXmin;
 }
@@ -351,6 +388,8 @@ DistributedLog_SetCommittedWithinAPage(
 	int page;
 	int slotno;
 	DistributedLogEntry *ptr;
+	TimestampTz lockHeldStartTz;
+	long duration;
 
 	Assert(!IS_QUERY_DISPATCHER());
 	Assert(numLocIds > 0);
@@ -360,16 +399,17 @@ DistributedLog_SetCommittedWithinAPage(
 	page = TransactionIdToPage(localXid[0]);
 
 	LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
+	lockHeldStartTz = GetCurrentTimestamp();
 
 	if (isRedo)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
 			 "DistributedLog_SetCommitted check if page %d is present",
 			 page);
 		if (!SimpleLruDoesPhysicalPageExist(DistributedLogCtl, page))
 		{
 			DistributedLog_ZeroPage(page, /* writeXLog */ false);
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),
+			elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
 				 "DistributedLog_SetCommitted zeroed page %d",
 				 page);
 		}
@@ -411,6 +451,10 @@ DistributedLog_SetCommittedWithinAPage(
 	}
 
 	LWLockRelease(DistributedLogControlLock);
+
+	duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+	elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_SetCommitted held DistributedLogControlLock exclusive lock with %ld ms."
+											"param: [numLocIds %d, distribXid "UINT64_FORMAT", isRedo %d] ",  duration, numLocIds, distribXid, isRedo);
 }
 
 /*
@@ -554,6 +598,9 @@ DistributedLog_ScanForPrevCommitted(
 	int slotno;
 	TransactionId xid;
 
+	TimestampTz lockHeldStartTz;
+	long duration;
+
 	*distribXid = 0;
 
 	if ((*indexXid) == InvalidTransactionId)
@@ -574,6 +621,7 @@ DistributedLog_ScanForPrevCommitted(
 			lowXid = FirstNormalTransactionId;
 
 		LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
+		lockHeldStartTz = GetCurrentTimestamp();
 
 		/*
 		 * Peek to see if page exists.
@@ -581,6 +629,9 @@ DistributedLog_ScanForPrevCommitted(
 		if (!SimpleLruDoesPhysicalPageExist(DistributedLogCtl, pageno))
 		{
 			LWLockRelease(DistributedLogControlLock);
+
+			duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+			elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_ScanForPrevCommitted held DistributedLogControlLock exclusive lock with %ld ms.",  duration);
 
 			*indexXid = InvalidTransactionId;
 			*distribXid = 0;
@@ -603,11 +654,17 @@ DistributedLog_ScanForPrevCommitted(
 				*distribXid = ptr->distribXid;
 				LWLockRelease(DistributedLogControlLock);
 
+				duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+				elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_ScanForPrevCommitted held DistributedLogControlLock exclusive lock with %ld ms.",  duration);
+
 				return true;
 			}
 		}
 
 		LWLockRelease(DistributedLogControlLock);
+
+		duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+		elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_ScanForPrevCommitted held DistributedLogControlLock exclusive lock with %ld ms.",  duration);
 
 		if (lowXid == FirstNormalTransactionId)
 		{
@@ -652,7 +709,7 @@ DistributedLog_SharedShmemSize(void)
 Size
 DistributedLog_ShmemBuffers(void)
 {
-	return Min(128, Max(8, NBuffers / 512));
+	return Min(1024, Max(8, NBuffers / 512));
 }
 
 /*
@@ -715,11 +772,14 @@ void
 DistributedLog_BootStrap(void)
 {
 	int			slotno;
+	TimestampTz lockHeldStartTz;
+	long duration;
 
 	if (IS_QUERY_DISPATCHER())
 		return;
 
 	LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
+	lockHeldStartTz = GetCurrentTimestamp();
 
 	/* Create and zero the first page of the commit log */
 	slotno = DistributedLog_ZeroPage(0, false);
@@ -729,6 +789,9 @@ DistributedLog_BootStrap(void)
 	Assert(!DistributedLogCtl->shared->page_dirty[slotno]);
 
 	LWLockRelease(DistributedLogControlLock);
+
+	duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+	elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_BootStrap held DistributedLogControlLock exclusive lock with %ld ms.",  duration);
 }
 
 /*
@@ -768,6 +831,8 @@ DistributedLog_Startup(TransactionId oldestActiveXid,
 {
 	int			startPage;
 	int			endPage;
+	TimestampTz lockHeldStartTz;
+	long duration;
 
 	if (IS_QUERY_DISPATCHER())
 		return;
@@ -781,8 +846,9 @@ DistributedLog_Startup(TransactionId oldestActiveXid,
 	endPage = TransactionIdToPage(nextXid);
 
 	LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
+	lockHeldStartTz = GetCurrentTimestamp();
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+	elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
 		 "DistributedLog_Startup startPage %d, endPage %d",
 		 startPage, endPage);
 
@@ -861,6 +927,11 @@ DistributedLog_Startup(TransactionId oldestActiveXid,
 	DistributedLog_InitOldestXmin();
 
 	LWLockRelease(DistributedLogControlLock);
+
+	duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+	elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_Startup held DistributedLogControlLock exclusive lock with %ld ms."
+									"param: [startPage %d, endPage %d, IsBinaryUpgrade %s, ConvertCoordinatorDataDirToSegment %s]", 
+									duration, startPage, endPage, IsBinaryUpgrade, ConvertCoordinatorDataDirToSegment);
 }
 
 /*
@@ -908,6 +979,8 @@ void
 DistributedLog_Extend(TransactionId newestXact)
 {
 	int			page;
+	TimestampTz lockHeldStartTz;
+	long duration;
 
 	if (IS_QUERY_DISPATCHER())
 		return;
@@ -927,6 +1000,7 @@ DistributedLog_Extend(TransactionId newestXact)
 		 page);
 
 	LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
+	lockHeldStartTz = GetCurrentTimestamp();
 
 	/* Zero the page and make an XLOG entry about it */
 	DistributedLog_ZeroPage(page, true);
@@ -936,6 +1010,10 @@ DistributedLog_Extend(TransactionId newestXact)
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "DistributedLog_Extend with newest local xid = %d to page = %d",
 		 newestXact, page);
+
+	duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+	elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_Extend held DistributedLogControlLock exclusive lock with %ld ms."
+								  "param: [local xid = %d to page = %d]",  duration, newestXact, page);
 }
 
 
@@ -1079,6 +1157,9 @@ DistributedLog_redo(XLogReaderState *record)
 	uint8		info = XLogRecGetInfo(record) & ~XLR_INFO_MASK;
 	Assert(!IS_QUERY_DISPATCHER());
 
+	TimestampTz lockHeldStartTz;
+	long duration = false;
+
 	if (info == DISTRIBUTEDLOG_ZEROPAGE)
 	{
 		int			page;
@@ -1091,12 +1172,17 @@ DistributedLog_redo(XLogReaderState *record)
 			 page);
 
 		LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
+		lockHeldStartTz = GetCurrentTimestamp();
 
 		slotno = DistributedLog_ZeroPage(page, false);
 		SimpleLruWritePage(DistributedLogCtl, slotno);
 		Assert(!DistributedLogCtl->shared->page_dirty[slotno]);
 
 		LWLockRelease(DistributedLogControlLock);
+
+		duration = check_distributedlog_duration(lockHeldStartTz, GetCurrentTimestamp());
+		elog(((duration > 0) ? LOG : DEBUG5), "DistributedLog_redo held DistributedLogControlLock exclusive lock with %ld ms."
+										"Redo DISTRIBUTEDLOG_ZEROPAGE page %d",  duration, page);
 
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "DistributedLog_redo zero page = %d",
@@ -1128,4 +1214,20 @@ DistributedLog_redo(XLogReaderState *record)
 	}
 	else
 		elog(PANIC, "DistributedLog_redo: unknown op code %u", info);
+}
+
+/*
+ * check_distributedlog_duration
+ *		Determine whether current command's duration should be logged.
+ *
+ */
+long
+check_distributedlog_duration(TimestampTz start_time, TimestampTz stop_time)
+{
+	long duration;
+	duration = TimestampDifferenceMilliseconds(start_time, stop_time);
+
+	if (gp_log_distributedlogcontrollock_held_time > 0 && duration > gp_log_distributedlogcontrollock_held_time)
+		return duration;
+	return 0;
 }
