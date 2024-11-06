@@ -27,6 +27,7 @@
 #include <math.h>
 
 #include "access/clog.h"
+#include "access/distributedlog.h"
 #include "access/commit_ts.h"
 #include "access/genam.h"
 #include "access/hash.h"
@@ -2136,6 +2137,12 @@ vac_truncate_clog(TransactionId frozenXID,
 	TruncateCLOG(frozenXID, oldestxid_datoid);
 	TruncateCommitTs(frozenXID);
 	TruncateMultiXact(minMulti, minmulti_datoid);
+
+
+    if (!IS_QUERY_DISPATCHER())
+    {
+        DistributedLog_Truncate(frozenXID);
+    }
 
 	/*
 	 * Update the wrap limit for GetNewTransactionId and creation of new

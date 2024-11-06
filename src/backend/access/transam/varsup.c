@@ -373,6 +373,21 @@ AdvanceOldestClogXid(TransactionId oldest_datfrozenxid)
 	LWLockRelease(XactTruncationLock);
 }
 
+void
+AdvanceOldestDlogXid(TransactionId oldest_datfrozenxid)
+{
+	LWLockAcquire(DistributedLogTruncateLock, LW_EXCLUSIVE);
+	if (TransactionIdPrecedes(ShmemVariableCache->oldestDlogXid,
+							  oldest_datfrozenxid))
+	{
+		ShmemVariableCache->oldestDlogXid = oldest_datfrozenxid;
+		elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
+		 "AdvanceOldestDlogXid xid to %d",
+		 oldest_datfrozenxid);
+	}
+	LWLockRelease(DistributedLogTruncateLock);
+}
+
 /*
  * Determine the last safe XID to allocate using the currently oldest
  * datfrozenxid (ie, the oldest XID that might exist in any database

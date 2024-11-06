@@ -32,10 +32,11 @@ DistributedLog_desc(StringInfo buf, XLogReaderState *record)
 	}
 	else if (info == DISTRIBUTEDLOG_TRUNCATE)
 	{
-		int			page;
+		xl_dlog_truncate xlrec;
 
-		memcpy(&page, rec, sizeof(int));
-		appendStringInfo(buf, "truncate before: %d", page);
+		memcpy(&xlrec, XLogRecGetData(record), sizeof(xl_dlog_truncate));
+		appendStringInfo(buf, "truncate before: %d; oldestXmin %u",
+						 xlrec.page, xlrec.oldestXmin);
 	}
 	else
 		appendStringInfo(buf, "UNKNOWN");

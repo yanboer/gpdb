@@ -565,3 +565,4 @@
 		"xmlbinary",
 		"xmloption",
 		"max_slot_wal_keep_size",
+		"gp_print_dlog_truncate_info",

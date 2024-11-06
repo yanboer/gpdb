@@ -98,8 +98,7 @@ static DistributedLogShmem *DistributedLogShared = NULL;
 static int	DistributedLog_ZeroPage(int page, bool writeXlog);
 static bool DistributedLog_PagePrecedes(int page1, int page2);
 static void DistributedLog_WriteZeroPageXlogRec(int page);
-static void DistributedLog_WriteTruncateXlogRec(int page);
-static void DistributedLog_Truncate(TransactionId oldestXmin);
+static void DistributedLog_WriteTruncateXlogRec(int page, TransactionId oldestXmin);
 
 /*
  * Initialize the value for oldest local XID that might still be visible
@@ -244,6 +243,14 @@ DistributedLog_AdvanceOldestXmin(TransactionId oldestLocalXmin,
 				Assert(LWLockHeldByMe(DistributedLogControlLock));
 				LWLockRelease(DistributedLogControlLock);
 			}
+
+			/* check oldestXmin safe to look up in dlog */
+			if (TransactionIdPrecedes(oldestXmin, ShmemVariableCache->oldestDlogXid))
+			{
+				elog((gp_print_dlog_truncate_info ? LOG : DEBUG5), "DistributedLog_AdvanceOldestXmin not found dlog with xid %d, oldestDlogXid %d.", 
+				oldestXmin, ShmemVariableCache->oldestDlogXid);
+			}
+
 			slotno = SimpleLruReadPage_ReadOnly(DistributedLogCtl, page, oldestXmin);
 			DistributedLogControlLockHeldByMe = true;
 			currPage = page;
@@ -301,9 +308,6 @@ DistributedLog_AdvanceOldestXmin(TransactionId oldestLocalXmin,
 	}
 
 	LWLockRelease(DistributedLogTruncateLock);
-
-	if (TransactionIdToSegment(oldOldestXmin) < TransactionIdToSegment(oldestXmin))
-		DistributedLog_Truncate(oldestXmin);
 
 	return oldestXmin;
 }
@@ -508,6 +512,14 @@ DistributedLog_CommittedCheck(
 	}
 
 	LWLockAcquire(DistributedLogTruncateLock, LW_SHARED);
+
+	/* check localXid safe to look up in dlog */
+	if (TransactionIdPrecedes(localXid, ShmemVariableCache->oldestDlogXid))
+	{
+		elog((gp_print_dlog_truncate_info ? LOG : DEBUG5), "DistributedLog_CommittedCheck not found dlog with xid %d, oldestDlogXid %d.", 
+		localXid, ShmemVariableCache->oldestDlogXid);
+	}
+
 	slotno = SimpleLruReadPage_ReadOnly(DistributedLogCtl, page, localXid);
 	ptr = (DistributedLogEntry *) DistributedLogCtl->shared->page_buffer[slotno];
 	ptr += entryno;
@@ -950,37 +962,48 @@ DistributedLog_Extend(TransactionId newestXact)
  * a removable segment.
  *
  */
-static void
+void
 DistributedLog_Truncate(TransactionId oldestXmin)
 {
 	int			cutoffPage;
 
 	Assert(!IS_QUERY_DISPATCHER());
 
-	LWLockAcquire(DistributedLogTruncateLock, LW_EXCLUSIVE);
 	/*
 	 * The cutoff point is the start of the segment containing oldestXact. We
 	 * pass the *page* containing oldestXact to SimpleLruTruncate.
 	 */
 	cutoffPage = TransactionIdToPage(oldestXmin);
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+	elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
 		 "DistributedLog_Truncate with oldest local xid = %d to cutoff page = %d",
 		 oldestXmin, cutoffPage);
 
 	/* Check to see if there's any files that could be removed */
 	if (!SlruScanDirectory(DistributedLogCtl, SlruScanDirCbReportPresence, &cutoffPage))
 	{
-		LWLockRelease(DistributedLogTruncateLock);
+		elog((gp_print_dlog_truncate_info ? LOG : DEBUG5), "DistributedLog_Truncate nothing to remove.");
 		return;					/* nothing to remove */
 	}
 
+	/*
+	 * Advance oldestDlogXid before truncating dlog, so concurrent xact status
+	 * lookups can ensure they don't attempt to access truncated-away dlog.
+	 *
+	 * It's only necessary to do this if we will actually truncate away dlog
+	 * pages.
+	 */
+	AdvanceOldestDlogXid(oldestXmin);
+
 	/* Write XLOG record and flush XLOG to disk */
-	DistributedLog_WriteTruncateXlogRec(cutoffPage);
+	DistributedLog_WriteTruncateXlogRec(cutoffPage, oldestXmin);
 
 	/* Now we can remove the old DistributedLog segment(s) */
 	SimpleLruTruncate(DistributedLogCtl, cutoffPage);
-	LWLockRelease(DistributedLogTruncateLock);
+
+	elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
+		 "DistributedLog_Truncate completed with oldest local xid = %d to cutoff page = %d, cutoff segment = %X",
+		 oldestXmin, cutoffPage, TransactionIdToSegment(oldestXmin));
 }
 
 
@@ -1033,12 +1056,16 @@ DistributedLog_WriteZeroPageXlogRec(int page)
  * want it to be redone whether the invoking transaction commits or not.
  */
 static void
-DistributedLog_WriteTruncateXlogRec(int page)
+DistributedLog_WriteTruncateXlogRec(int page, TransactionId oldestXmin)
 {
 	XLogRecPtr	recptr;
+	xl_dlog_truncate xlrec;
+
+	xlrec.page = page;
+	xlrec.oldestXmin = oldestXmin;
 
 	XLogBeginInsert();
-	XLogRegisterData((char *) (&page), sizeof(int));
+	XLogRegisterData((char *) (&xlrec), sizeof(xl_dlog_truncate));
 	recptr = XLogInsert(RM_DISTRIBUTEDLOG_ID, DISTRIBUTEDLOG_TRUNCATE);
 	XLogFlush(recptr);
 }
@@ -1077,25 +1104,27 @@ DistributedLog_redo(XLogReaderState *record)
 	}
 	else if (info == DISTRIBUTEDLOG_TRUNCATE)
 	{
-		int			page;
+		xl_dlog_truncate xlrec;
 
-		memcpy(&page, XLogRecGetData(record), sizeof(int));
+		memcpy(&xlrec, XLogRecGetData(record), sizeof(xl_dlog_truncate));
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),
-			 "Redo DISTRIBUTEDLOG_TRUNCATE page %d",
-			 page);
+		elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
+			 "Redo DISTRIBUTEDLOG_TRUNCATE page %d, oldestXmin %d",
+			 xlrec.page, xlrec.oldestXmin);
 
 		/*
 		 * During XLOG replay, latest_page_number isn't set up yet; insert
 		 * a suitable value to bypass the sanity test in SimpleLruTruncate.
 		 */
-		DistributedLogCtl->shared->latest_page_number = page;
+		DistributedLogCtl->shared->latest_page_number = xlrec.page;
 
-		SimpleLruTruncate(DistributedLogCtl, page);
+		AdvanceOldestDlogXid(xlrec.oldestXmin);
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),
-			 "DistributedLog_redo truncate to cutoff page = %d",
-			 page);
+		SimpleLruTruncate(DistributedLogCtl, xlrec.page);
+
+		elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
+			 "DistributedLog_redo truncate to cutoff page = %d, oldestXmin %d",
+			 xlrec.page, xlrec.oldestXmin);
 	}
 	else
 		elog(PANIC, "DistributedLog_redo: unknown op code %u", info);

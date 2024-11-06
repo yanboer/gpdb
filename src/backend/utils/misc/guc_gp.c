@@ -447,6 +447,9 @@ double		optimizer_jit_optimize_above_cost;
 /* Switch to toggle block-directory based sampling for AO/CO tables */
 bool		gp_enable_blkdir_sampling;
 
+/* distributed log truncate */
+bool gp_print_dlog_truncate_info = false;
+
 static const struct config_enum_entry gp_log_format_options[] = {
 	{"text", 0},
 	{"csv", 1},
@@ -3072,6 +3075,17 @@ struct config_bool ConfigureNamesBool_gp[] =
 		false,
 		NULL, NULL, NULL
 	},
+
+    {
+        {"gp_print_dlog_truncate_info", PGC_SUSET, AUTOVACUUM,
+        gettext_noop("Print distributedlog truncation infomation to server log."),
+        NULL,
+        GUC_NOT_IN_SAMPLE
+        },
+        &gp_print_dlog_truncate_info,
+        false,
+        NULL, NULL, NULL
+    },
 
 	/* End-of-list marker */
 	{

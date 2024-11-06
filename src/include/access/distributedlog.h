@@ -64,6 +64,7 @@ extern void DistributedLog_Startup(
 extern void DistributedLog_Shutdown(void);
 extern void DistributedLog_CheckPoint(void);
 extern void DistributedLog_Extend(TransactionId newestXid);
+extern void DistributedLog_Truncate(TransactionId oldestXmin);
 extern bool DistributedLog_GetLowWaterXid(
 							  TransactionId *lowWaterXid);
 extern void DistributedLog_InitOldestXmin(void);
@@ -71,6 +72,12 @@ extern void DistributedLog_InitOldestXmin(void);
 /* XLOG stuff */
 #define DISTRIBUTEDLOG_ZEROPAGE		0x00
 #define DISTRIBUTEDLOG_TRUNCATE		0x10
+
+typedef struct xl_dlog_truncate
+{
+	int			page;
+	TransactionId oldestXmin;
+} xl_dlog_truncate;
 
 extern void DistributedLog_redo(XLogReaderState *record);
 extern void DistributedLog_desc(StringInfo buf, XLogReaderState *record);

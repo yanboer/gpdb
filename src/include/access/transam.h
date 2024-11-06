@@ -169,6 +169,11 @@ typedef struct VariableCacheData
 	 */
 	TransactionId oldestClogXid;	/* oldest it's safe to look up in clog */
 
+	/*
+	 * These fields are protected by DistributedLogTruncateLock
+	 */
+	TransactionId oldestDlogXid;	/* oldest it's safe to look up in dlog */
+
 } VariableCacheData;
 
 typedef VariableCacheData *VariableCache;
@@ -216,6 +221,7 @@ extern FullTransactionId ReadNextFullTransactionId(void);
 extern void SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 								  Oid oldest_datoid);
 extern void AdvanceOldestClogXid(TransactionId oldest_datfrozenxid);
+extern void AdvanceOldestDlogXid(TransactionId oldest_datfrozenxid);
 extern bool ForceTransactionIdLimitUpdate(void);
 extern Oid	GetNewObjectId(void);
 extern void AdvanceObjectId(Oid newOid);
