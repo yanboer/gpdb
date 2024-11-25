@@ -1619,6 +1619,7 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 			}
 
 			if (foundRTI)
+				ExecutorMarkTransactionDoesWrites();
 				continue;
         }
 
