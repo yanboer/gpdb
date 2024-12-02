@@ -3651,7 +3651,7 @@ checkCanOptSelectLockingClause(SelectStmt *stmt)
 	 * in exec_parse_message to mark queries that using extended
 	 * protocal.
 	 */
-	if (stmt->disableLockingOptimization)
+	if (stmt->disableLockingOptimization && !gp_optimizer_extended_query_for_update)
 		return false;
 
 	/*

@@ -569,3 +569,4 @@
 		"gp_print_dlog_advance_xid_info",
 		"gp_log_distributedlogcontrollock_held_time",
 		"gp_advance_dlog_xid_limit",
+		"gp_optimizer_extended_query_for_update",

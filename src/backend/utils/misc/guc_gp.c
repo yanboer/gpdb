@@ -453,6 +453,9 @@ bool gp_print_dlog_advance_xid_info = false;
 int gp_log_distributedlogcontrollock_held_time = 1000;
 int gp_advance_dlog_xid_limit = 40960;
 
+/* jdbc for update */
+bool gp_optimizer_extended_query_for_update = false;
+
 static const struct config_enum_entry gp_log_format_options[] = {
 	{"text", 0},
 	{"csv", 1},
@@ -3097,6 +3100,17 @@ struct config_bool ConfigureNamesBool_gp[] =
         GUC_NOT_IN_SAMPLE
         },
         &gp_print_dlog_advance_xid_info,
+        false,
+        NULL, NULL, NULL
+    },
+
+    {
+        {"gp_optimizer_extended_query_for_update", PGC_SUSET, CUSTOM_OPTIONS,
+        gettext_noop("Determines whether Greenplum attempts to optimizer jdbc for update (may encounter unknown errors) ."),
+        NULL,
+        GUC_NOT_IN_SAMPLE
+        },
+        &gp_optimizer_extended_query_for_update,
         false,
         NULL, NULL, NULL
     },

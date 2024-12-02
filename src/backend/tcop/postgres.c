@@ -2442,7 +2442,8 @@ exec_bind_message(StringInfo input_message)
 	else
 		portal = CreatePortal(portal_name, false, false);
 
-	portal->is_extended_query = true;
+	if (!gp_optimizer_extended_query_for_update)
+		portal->is_extended_query = true;
 
 	/*
 	 * Prepare to copy stuff into the portal's memory context.  We do all this
