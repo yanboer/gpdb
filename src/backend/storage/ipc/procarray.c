@@ -2259,6 +2259,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		 distributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON))
 	{
 		readerFillLocalSnapshot(snapshot, distributedTransactionContext);
+		elog(LOG, "GetSnapshotData from readerFillLocalSnapshot: xmin %d, xmax %d, xip %d, distributed xid %d, distributed xmin %d, distributed xmax %d", snapshot->xmin, snapshot->xmax, snapshot->xip, snapshot->distribSnapshotWithLocalMapping.ds.distribSnapshotId, snapshot->distribSnapshotWithLocalMapping.ds.xmin, snapshot->distribSnapshotWithLocalMapping.ds.xmax);
 		return snapshot;
 	}
 
@@ -2591,6 +2592,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 			(errmsg("GetSnapshotData(): WRITER currentcommandid %d curcid %d segmatesync %d",
 					GetCurrentCommandId(false), snapshot->curcid, QEDtxContextInfo.segmateSync)));
 
+	elog(LOG, "GetSnapshotData: xmin %d, xmax %d, xip %d, distributed xid %d, distributed xmin %d, distributed xmax %d", snapshot->xmin, snapshot->xmax, snapshot->xip, snapshot->distribSnapshotWithLocalMapping.ds.distribSnapshotId, snapshot->distribSnapshotWithLocalMapping.ds.xmin, snapshot->distribSnapshotWithLocalMapping.ds.xmax);
 	return snapshot;
 }
 

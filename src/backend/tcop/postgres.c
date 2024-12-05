@@ -2063,6 +2063,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (save_log_statement_stats)
 		ResetUsage();
 
+	elog(LOG, "parse %s: %s", *stmt_name ? stmt_name : "<unnamed>", query_string);
+
 	ereport(DEBUG2,
 			(errmsg("parse %s: %s",
 					*stmt_name ? stmt_name : "<unnamed>",
@@ -2344,6 +2346,8 @@ exec_bind_message(StringInfo input_message)
 	stmt_name = pq_getmsgstring(input_message);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Bind: portal %s stmt_name %s", portal_name, stmt_name);
+
+	elog(LOG, "bind %s to %s", *portal_name ? portal_name : "<unnamed>", *stmt_name ? stmt_name : "<unnamed>");
 
 	ereport(DEBUG2,
 			(errmsg("bind %s to %s",
@@ -2845,6 +2849,8 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	 */
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
+	
+	elog(LOG, "exec_execute_message: with portal_name %s, max_rows %d, execute_is_fetch %d.", portal_name, max_rows, execute_is_fetch);
 
 	completed = PortalRun(portal,
 						  max_rows,

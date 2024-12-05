@@ -979,6 +979,7 @@ PortalRun(Portal portal, int64 count, bool isTopLevel, bool run_once,
 				if (portal->strategy != PORTAL_ONE_SELECT && !portal->holdStore)
 					FillPortalStore(portal, isTopLevel);
 
+				elog(LOG, "portal->strategy: %d", portal->strategy);
 				/*
 				 * Now fetch desired portion of results.
 				 */
@@ -1140,10 +1141,15 @@ PortalRunSelect(Portal portal,
 			count = 0;
 
 		if (portal->holdStore)
+		{
+			elog(LOG, "PortalRunSelect from RunFromStore.");
 			nprocessed = RunFromStore(portal, direction, (uint64) count, dest);
+		}
 		else
 		{
+			elog(LOG, "PortalRunSelect from ExecutorRun.");
 			PushActiveSnapshot(queryDesc->snapshot);
+			elog(LOG, "PortalRunSelect with snapshot xmin %d, xmax %d, xip %d", queryDesc->snapshot->xmin, queryDesc->snapshot->xmax, queryDesc->snapshot->xip);
 			ExecutorRun(queryDesc, direction, (uint64) count,
 						portal->run_once);
 			nprocessed = queryDesc->estate->es_processed;

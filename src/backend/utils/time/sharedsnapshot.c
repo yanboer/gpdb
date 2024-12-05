@@ -655,6 +655,8 @@ dumpSharedLocalSnapshot_forCursor(void)
 
 	elog(DEBUG1, "Dump syncmate : %u snapshot to slot %d", src->segmateSync, id);
 
+	elog(LOG, "Dump syncmate : %u snapshot to slot %d, distributedXid is %d, local xid is %d, ", src->segmateSync, id, pDump->distributedXid, pDump->localXid);
+
 	src->cur_dump_id =
 		(src->cur_dump_id + 1) % SNAPSHOTDUMPARRAYSZ;
 
@@ -751,6 +753,13 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot, DtxContext distributedTrans
 	memset(snapshot->xip + snapshot->xcnt, 0, (xipEntryCount - snapshot->xcnt)*sizeof(TransactionId));
 
 	snapshot->curcid = dumpsnapshot->curcid;
+
+	ereportif(true, LOG,
+            (errmsg("qExec READER setting local xid= " UINT64_FORMAT ", cid=%u "
+                    "(distributedXid "UINT64_FORMAT"/%u)",
+                    U64FromFullTransactionId(localXid), snapshot->curcid,
+                    QEDtxContextInfo.distributedXid,
+                    QEDtxContextInfo.segmateSync)));
 
 	SetSharedTransactionId_reader(
 		localXid,
