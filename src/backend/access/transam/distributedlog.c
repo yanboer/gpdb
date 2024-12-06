@@ -1044,8 +1044,20 @@ void
 DistributedLog_Truncate(TransactionId oldestXmin)
 {
 	int			cutoffPage;
+	TransactionId oldestDistributedXmin;
 
 	Assert(!IS_QUERY_DISPATCHER());
+
+	oldestDistributedXmin = (TransactionId)pg_atomic_read_u32((pg_atomic_uint32 *)&DistributedLogShared->oldestXmin);
+	Assert(oldestDistributedXmin != InvalidTransactionId);
+
+	if (TransactionIdPrecedes(oldestDistributedXmin, oldestXmin))
+	{
+		elog((gp_print_dlog_truncate_info ? LOG : DEBUG5),
+			"DistributedLog_Truncate remove but oldestDistributedXmin: %d precedes oldestXmin: %d",
+			oldestDistributedXmin, oldestXmin);
+		return;
+	}
 
 	/*
 	 * The cutoff point is the start of the segment containing oldestXact. We
