@@ -3650,8 +3650,10 @@ checkCanOptSelectLockingClause(SelectStmt *stmt)
 	 * The disableLockingOptimization field is set true
 	 * in exec_parse_message to mark queries that using extended
 	 * protocal.
+	 * 
+	 * gp_disable_jdbc_cursor see exec_bind_message().
 	 */
-	if (stmt->disableLockingOptimization)
+	if (stmt->disableLockingOptimization && !gp_disable_jdbc_cursor)
 		return false;
 
 	/*
