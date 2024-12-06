@@ -823,4 +823,7 @@ extern bool gp_print_dlog_advance_xid_info;
 extern int	gp_log_distributedlogcontrollock_held_time;
 extern int  gp_advance_dlog_xid_limit;
 
+/* jdbc */
+extern bool gp_disable_jdbc_cursor;
+
 #endif							/* GUC_H */

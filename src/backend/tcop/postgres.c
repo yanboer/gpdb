@@ -2442,7 +2442,26 @@ exec_bind_message(StringInfo input_message)
 	else
 		portal = CreatePortal(portal_name, false, false);
 
-	portal->is_extended_query = true;
+	/*
+	 * Using jdbc driver connect to Greenplum to execute SQL queries will involve the following steps:
+	 *     1. send 'P' message, and QD will invoke exec_parse_message
+	 *     2. send 'B' message, and QD will invoke exec_bind_message, which will create portal and invoke protalstart to create gang and dispatch plan
+	 *	   3. send 'E' message, and QD will invoke exec_execute_message, this message may contain one parameter `max_rows`, if max_rows <=0 it means fetch all, and portalrun  will
+	 *  use `max_rows` to fetch	
+	 * 
+	 * So only after getting 'E' message, can QD know client only needs some tuples. And QD has to make sure each fetching uses the same snapshot. (QD need to ensure that each fetch in QE uses the same snapshot, But by default QE will use the latest snapshot to execute. )
+	 * 
+	 * That's why in exec_bind_message, we set a GPDB-specific flag in portal (portal->is_extended_query).
+	 * 
+	 * 
+	 * However, portal->is_extended_query will cause two problems
+	 *     1. QE nodes frequently create and destroy gangs (which will increase system load under high concurrency)
+	 *     2. jdbc for update acquire Exclusive Lock
+	 * 
+	 * So we provide a guc to disable the cursor if the client confirms that it will not use it.
+	 */
+	if (!gp_disable_jdbc_cursor)
+		portal->is_extended_query = true;
 
 	/*
 	 * Prepare to copy stuff into the portal's memory context.  We do all this
@@ -2844,6 +2863,11 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	 */
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
+	elif (gp_disable_jdbc_cursor)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cursor not supported on jdbc protocol, "
+						"if need use cursor on jdbc protocol, please set gp_disable_jdbc_cursor is false. ")));
 
 	completed = PortalRun(portal,
 						  max_rows,

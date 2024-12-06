@@ -453,6 +453,9 @@ bool gp_print_dlog_advance_xid_info = false;
 int gp_log_distributedlogcontrollock_held_time = 1000;
 int gp_advance_dlog_xid_limit = 40960;
 
+/* jdbc */
+bool gp_disable_jdbc_cursor = true;
+
 static const struct config_enum_entry gp_log_format_options[] = {
 	{"text", 0},
 	{"csv", 1},
@@ -3098,6 +3101,17 @@ struct config_bool ConfigureNamesBool_gp[] =
         },
         &gp_print_dlog_advance_xid_info,
         false,
+        NULL, NULL, NULL
+    },
+
+    {
+        {"gp_disable_jdbc_cursor", PGC_SUSET, CUSTOM_OPTIONS,
+        gettext_noop("Determines whether to disable the cursor feature of the jdbc protocol. "),
+        NULL,
+        GUC_NOT_IN_SAMPLE
+        },
+        &gp_disable_jdbc_cursor,
+        true,
         NULL, NULL, NULL
     },
 
