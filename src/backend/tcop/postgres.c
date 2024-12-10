@@ -2864,10 +2864,9 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
 	else if (gp_disable_jdbc_cursor)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cursor not supported on jdbc protocol, "
-						"if need use cursor on jdbc protocol, please set gp_disable_jdbc_cursor is false. ")));
+		elog(WARNING,
+				 "cursor not supported on jdbc protocol, "
+						"if need use cursor on jdbc protocol, please set gp_disable_jdbc_cursor is false. ");
 
 	completed = PortalRun(portal,
 						  max_rows,
