@@ -3,6 +3,7 @@
 S3RESTfulService::S3RESTfulService()
     : lowSpeedLimit(0),
       lowSpeedTime(0),
+      maxDownloadSpeed(0),
       proxy(""),
       debugCurl(false),
       verifyCert(true),
@@ -12,6 +13,7 @@ S3RESTfulService::S3RESTfulService()
 S3RESTfulService::S3RESTfulService(const string &proxy)
     : lowSpeedLimit(0),
       lowSpeedTime(0),
+      maxDownloadSpeed(0),
       proxy(proxy),
       debugCurl(false),
       verifyCert(true),
@@ -26,6 +28,7 @@ S3RESTfulService::S3RESTfulService(const S3Params &params)
 
     this->lowSpeedLimit = params.getLowSpeedLimit();
     this->lowSpeedTime = params.getLowSpeedTime();
+    this->maxDownloadSpeed = params.getMaxDownloadSpeed();
     this->debugCurl = params.isDebugCurl();
     this->chunkBufferSize = params.getChunkSize();
     this->verifyCert = params.isVerifyCert();
@@ -155,6 +158,7 @@ Response S3RESTfulService::get(const string &url, HTTPHeaders &headers) {
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, RESTfulServiceWriteFuncCallback);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, this->verifyCert);
+    curl_easy_setopt(curl, CURLOPT_MAX_RECV_SPEED_LARGE, (curl_off_t)this->maxDownloadSpeed);
 
     this->performCurl(curl, response);
 

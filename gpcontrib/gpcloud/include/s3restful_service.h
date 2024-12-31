@@ -30,6 +30,7 @@ class S3RESTfulService : public RESTfulService {
    private:
     uint64_t lowSpeedLimit;
     uint64_t lowSpeedTime;
+    uint64_t maxDownloadSpeed;
 
     string proxy;
 

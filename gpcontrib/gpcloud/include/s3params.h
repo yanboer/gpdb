@@ -17,6 +17,7 @@ class S3Params {
           numOfChunks(0),
           lowSpeedLimit(0),
           lowSpeedTime(0),
+          maxDownloadSpeed(0),
           proxy(""),
           debugCurl(false),
           autoCompress(false),
@@ -86,6 +87,14 @@ class S3Params {
 
     void setLowSpeedTime(uint64_t lowSpeedTime) {
         this->lowSpeedTime = lowSpeedTime;
+    }
+
+    uint64_t getMaxDownloadSpeed() const {
+        return maxDownloadSpeed;
+    }
+
+    void setMaxDownloadSpeed(uint64_t maxDownloadSpeed) {
+        this->maxDownloadSpeed = maxDownloadSpeed;
     }
 
     bool isDebugCurl() const {
@@ -159,6 +168,7 @@ class S3Params {
 
     uint64_t lowSpeedLimit;  // low speed limit
     uint64_t lowSpeedTime;   // low speed timeout
+    uint64_t maxDownloadSpeed;   // max download speed
 
     string proxy;  // proxy
 
