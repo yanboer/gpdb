@@ -121,6 +121,9 @@ S3Params InitConfig(const string& urlWithOptions) {
     int64_t lowSpeedTime = s3Cfg.SafeScan("low_speed_time", configSection, 60, 0, INT_MAX);
     params.setLowSpeedTime(lowSpeedTime);
 
+    int64_t maxDownloadSpeed = s3Cfg.SafeScan("max_download_speed", configSection, 10485760, 0, INT_MAX);
+    params.setMaxDownloadSpeed(maxDownloadSpeed);
+
     params.setProxy(s3Cfg.Get(configSection, "proxy", ""));
 
     params.setAutoCompress(s3Cfg.GetBool(configSection, "autocompress", "true"));
