@@ -367,22 +367,23 @@ void SignRequestV4(const string &method, HTTPHeaders *headers, const string &ori
                   << path << "\n"
                   << query << "\nhost:" << headers->Get(HOST)
                   << "\nx-amz-content-sha256:" << headers->Get(X_AMZ_CONTENT_SHA256)
-                  << "\nx-amz-date:" << headers->Get(X_AMZ_DATE);
+                  << "\nx-amz-date:" << headers->Get(X_AMZ_DATE)
+                  << "\nx-amz-security-token:" << cred.token;
 
     string signed_headers;
     if (headers->Get(X_AMZ_SERVER_SIDE_ENCRYPTION) != NULL) {
         canonical_str << "\nx-amz-server-side-encryption:"
                       << headers->Get(X_AMZ_SERVER_SIDE_ENCRYPTION) << "\n\n"
-                      << "host;x-amz-content-sha256;x-amz-date;x-amz-server-side-encryption\n"
+                      << "host;x-amz-content-sha256;x-amz-date;x-amz-security-token;x-amz-server-side-encryption\n"
                       << headers->Get(X_AMZ_CONTENT_SHA256);
 
-        signed_headers = "host;x-amz-content-sha256;x-amz-date;x-amz-server-side-encryption";
+        signed_headers = "host;x-amz-content-sha256;x-amz-date;x-amz-security-token;x-amz-server-side-encryption";
     } else {
         canonical_str << "\n\n"
-                      << "host;x-amz-content-sha256;x-amz-date\n"
+                      << "host;x-amz-content-sha256;x-amz-date;x-amz-security-token\n"
                       << headers->Get(X_AMZ_CONTENT_SHA256);
 
-        signed_headers = "host;x-amz-content-sha256;x-amz-date";
+        signed_headers = "host;x-amz-content-sha256;x-amz-date;x-amz-security-token";
     }
 
     sha256_hex(canonical_str.str().c_str(), canonical_hex);
@@ -415,6 +416,7 @@ void SignRequestV4(const string &method, HTTPHeaders *headers, const string &ori
                      << ",Signature=" << signature_hex;
 
     headers->Add(AUTHORIZATION, signature_header.str());
+    headers->Add(X_AMZ_SECURITY_TOKEN, cred.token);
 }
 
 // GetOptS3 returns first value according to given key.
