@@ -83,6 +83,8 @@ const char *GetFieldString(HeaderField f) {
             return "x-amz-content-sha256";
         case X_AMZ_SERVER_SIDE_ENCRYPTION:
             return "x-amz-server-side-encryption";
+        case X_AMZ_SECURITY_TOKEN:
+            return "x-amz-security-token";
         default:
             return "Unknown";
     }
