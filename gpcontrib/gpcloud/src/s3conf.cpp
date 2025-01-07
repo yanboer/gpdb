@@ -1,6 +1,12 @@
 #include "s3conf.h"
 #include "s3macros.h"
 #include "s3params.h"
+#include "s3utils.h"
+#include <curl/curl.h>
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+#include <iostream>
+#include <string>
 
 #include <arpa/inet.h>
 
@@ -97,12 +103,14 @@ S3Params InitConfig(const string& urlWithOptions) {
 
     string accessId = s3Cfg.Get(configSection, "accessid", "");
     string secret = s3Cfg.Get(configSection, "secret", "");
-    if(accessId.empty() && secret.empty())
+    string token = s3Cfg.Get(configSection, "token", "");
+    string metadataUrl = s3Cfg.Get(configSection, "metadata_url", "");
+    if(accessId.empty() && secret.empty() && token.empty())
     {
-        S3WARN("Both accessid and secret are empty in s3 config file, try to read default aws credentials.");
-        GetAwsProfileInfo(configSection, accessId, secret);
+        S3WARN("Both accessid, secret and token are empty in s3 config file, try to read default aws credentials.");
+        GetAwsProfileInfo(configSection, accessId, secret, token, metadataUrl);
     }
-    params.setCred(accessId, secret, s3Cfg.Get(configSection, "token", ""));
+    params.setCred(accessId, secret, token);
 
     s3ext_logserverhost = s3Cfg.Get(configSection, "logserverhost", "127.0.0.1");
 
@@ -144,8 +152,12 @@ S3Params InitConfig(const string& urlWithOptions) {
     return params;
 }
 
-void GetAwsProfileInfo(const string configSection, string& accessId, string& secret)
+void GetAwsProfileInfo(const string configSection, string& accessId, string& secret, string& token, string& metadataUrl)
 {
+    if (GetAwsMetadataCredentials(metadataUrl, accessId, secret, token)) {
+        return;
+    }
+
     string home(getenv("HOME"));
     string configPath = home + "/.aws/credentials";
     Config awsCfg(configPath);
@@ -157,7 +169,8 @@ void GetAwsProfileInfo(const string configSection, string& accessId, string& sec
                    configSection);
     
     accessId = awsCfg.Get(configSection, "aws_access_key_id", "");
-    secret = awsCfg.Get(configSection, "aws_secret_access_key", "");   
+    secret = awsCfg.Get(configSection, "aws_secret_access_key", "");
+    token = awsCfg.Get(configSection, "aws_session_token", "");
 }
 
 void CheckEssentialConfig(const S3Params& params) {
@@ -178,4 +191,57 @@ void CheckEssentialConfig(const S3Params& params) {
         S3_CHECK_OR_DIE(false, S3ConfigError, "\"FATAL: gpcheckcloud_newline is invalid\"\"",
                         "gpcheckcloud_newline");
     }
+}
+
+bool GetAwsMetadataCredentials(const string& metadataUrl, string& accessId, string& secret, string& token) {
+    CURL* curl;
+    CURLcode res;
+    string readBuffer;
+
+    if (metadataUrl.empty()) {
+        return false;
+    }
+
+    curl = curl_easy_init();
+    if(curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, metadataUrl);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        curl_easy_setopt(curl, CURLOPT_URL, metadataUrl.c_str());
+
+        res = curl_easy_perform(curl);
+        if(res != CURLE_OK) {
+            curl_easy_cleanup(curl);
+            return false;
+        }
+
+        xmlDocPtr doc = xmlReadMemory(readBuffer.c_str(), readBuffer.size(), "metadata.xml", NULL, 0);
+        if (doc == NULL) {
+            S3WARN("Failed to parse metadata XML.");
+            curl_easy_cleanup(curl);
+            return false;
+        }
+
+        xmlNodePtr rootElement = xmlDocGetRootElement(doc);
+        for (xmlNodePtr cur = rootElement->xmlChildrenNode; cur != NULL; cur = cur->next) {
+            if ((!xmlStrcmp(cur->name, (const xmlChar *)"AccessKeyId"))) {
+                xmlChar* key = xmlNodeListGetString(doc, cur->xmlChildrenNode, 1);
+                accessId = (const char*)key;
+                xmlFree(key);
+            } else if ((!xmlStrcmp(cur->name, (const xmlChar *)"SecretAccessKey"))) {
+                xmlChar* key = xmlNodeListGetString(doc, cur->xmlChildrenNode, 1);
+                secret = (const char*)key;
+                xmlFree(key);
+            } else if ((!xmlStrcmp(cur->name, (const xmlChar *)"Token"))) {
+                xmlChar* key = xmlNodeListGetString(doc, cur->xmlChildrenNode, 1);
+                token = (const char*)key;
+                xmlFree(key);
+            }
+        }
+
+        xmlFreeDoc(doc);
+        curl_easy_cleanup(curl);
+        return true;
+    }
+    return false;
 }

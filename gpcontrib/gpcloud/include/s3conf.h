@@ -29,6 +29,7 @@ extern struct sockaddr_in s3ext_logserveraddr;
 
 class S3Params;
 void CheckEssentialConfig(const S3Params& params);
-void GetAwsProfileInfo(const string configSection, string& accessId, string& secret);
+void GetAwsProfileInfo(const string configSection, string& accessId, string& secret, string& token, string& metadataUrl);
+bool GetAwsMetadataCredentials(const string& metadataUrl, string& accessId, string& secret, string& token);
 
 #endif
