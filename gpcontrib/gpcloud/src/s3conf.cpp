@@ -3,8 +3,7 @@
 #include "s3params.h"
 #include "s3utils.h"
 #include <curl/curl.h>
-#include <libxml/parser.h>
-#include <libxml/tree.h>
+#include <json/json.h>
 #include <iostream>
 #include <string>
 
@@ -155,6 +154,7 @@ S3Params InitConfig(const string& urlWithOptions) {
 void GetAwsProfileInfo(const string configSection, string& accessId, string& secret, string& token, string& metadataUrl)
 {
     if (GetAwsMetadataCredentials(metadataUrl, accessId, secret, token)) {
+        S3INFO("Successfully read aws credentials from metadata service.");
         return;
     }
 
@@ -193,6 +193,11 @@ void CheckEssentialConfig(const S3Params& params) {
     }
 }
 
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
+}
+
 bool GetAwsMetadataCredentials(const string& metadataUrl, string& accessId, string& secret, string& token) {
     CURL* curl;
     CURLcode res;
@@ -204,8 +209,7 @@ bool GetAwsMetadataCredentials(const string& metadataUrl, string& accessId, stri
 
     curl = curl_easy_init();
     if(curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, metadataUrl);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
         curl_easy_setopt(curl, CURLOPT_URL, metadataUrl.c_str());
 
@@ -215,31 +219,27 @@ bool GetAwsMetadataCredentials(const string& metadataUrl, string& accessId, stri
             return false;
         }
 
-        xmlDocPtr doc = xmlReadMemory(readBuffer.c_str(), readBuffer.size(), "metadata.xml", NULL, 0);
-        if (doc == NULL) {
-            S3WARN("Failed to parse metadata XML.");
+        Json::Value jsonData;
+        Json::CharReaderBuilder readerBuilder;
+        std::string errs;
+        std::istringstream s(readBuffer);
+
+        if (!Json::parseFromStream(readerBuilder, s, &jsonData, &errs)) {
+            S3WARN("Failed to parse JSON: %s", errs.c_str());
+            curl_easy_cleanup(curl);
+            return false;
+        }
+    
+        if (!jsonData.isMember("AccessKeyId") || !jsonData.isMember("SecretAccessKey") || !jsonData.isMember("Token")) {
+            S3WARN("JSON response does not contain required fields.");
             curl_easy_cleanup(curl);
             return false;
         }
 
-        xmlNodePtr rootElement = xmlDocGetRootElement(doc);
-        for (xmlNodePtr cur = rootElement->xmlChildrenNode; cur != NULL; cur = cur->next) {
-            if ((!xmlStrcmp(cur->name, (const xmlChar *)"AccessKeyId"))) {
-                xmlChar* key = xmlNodeListGetString(doc, cur->xmlChildrenNode, 1);
-                accessId = (const char*)key;
-                xmlFree(key);
-            } else if ((!xmlStrcmp(cur->name, (const xmlChar *)"SecretAccessKey"))) {
-                xmlChar* key = xmlNodeListGetString(doc, cur->xmlChildrenNode, 1);
-                secret = (const char*)key;
-                xmlFree(key);
-            } else if ((!xmlStrcmp(cur->name, (const xmlChar *)"Token"))) {
-                xmlChar* key = xmlNodeListGetString(doc, cur->xmlChildrenNode, 1);
-                token = (const char*)key;
-                xmlFree(key);
-            }
-        }
+        accessId = jsonData["AccessKeyId"].asString();
+        secret = jsonData["SecretAccessKey"].asString();
+        token = jsonData["Token"].asString();
 
-        xmlFreeDoc(doc);
         curl_easy_cleanup(curl);
         return true;
     }
