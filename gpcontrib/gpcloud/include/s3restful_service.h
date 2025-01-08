@@ -10,6 +10,31 @@
 #include "s3macros.h"
 #include "s3params.h"
 
+struct CURLWrapper {
+    CURLWrapper(const string &url, curl_slist *headers, uint64_t lowSpeedLimit,
+                uint64_t lowSpeedTime, bool debugCurl, string proxy) {
+        curl = curl_easy_init();
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_FORBID_REUSE, 1L);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, lowSpeedLimit);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, lowSpeedTime);
+
+        if (debugCurl) {
+            curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        }
+
+        if (!proxy.empty()) {
+            curl_easy_setopt(curl, CURLOPT_PROXY, proxy.c_str());
+        }
+    }
+    ~CURLWrapper() {
+        curl_easy_cleanup(curl);
+    }
+    CURL *curl;
+};
+
 class S3RESTfulService : public RESTfulService {
    public:
     S3RESTfulService();

@@ -2,10 +2,7 @@
 #include "s3macros.h"
 #include "s3params.h"
 #include "s3utils.h"
-#include <curl/curl.h>
-#include <json/json.h>
-#include <iostream>
-#include <string>
+#include "s3restful_service.h"
 
 #include <arpa/inet.h>
 
@@ -199,24 +196,26 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
 }
 
 bool GetAwsMetadataCredentials(const string& metadataUrl, string& accessId, string& secret, string& token) {
-    CURL* curl;
-    CURLcode res;
-    string readBuffer;
-
     if (metadataUrl.empty()) {
         return false;
     }
 
-    curl = curl_easy_init();
-    if(curl) {
+    try {
+        CURLcode res;
+        string readBuffer;
+        HTTPHeaders headers;
+        headers.Add(CONTENTTYPE, "application/json");
+
+        headers.CreateList();
+        CURLWrapper wrapper(metadataUrl.c_str(), headers.GetList(), 0, 0, false, "");
+        CURL *curl = wrapper.curl;
+
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&readBuffer);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-        curl_easy_setopt(curl, CURLOPT_URL, metadataUrl.c_str());
 
         res = curl_easy_perform(curl);
-        if(res != CURLE_OK) {
-            curl_easy_cleanup(curl);
-            return false;
+        if (res != CURLE_OK) {
+            S3_DIE(S3ConnectionError, curl_easy_strerror(res));
         }
 
         Json::Value jsonData;
@@ -226,13 +225,11 @@ bool GetAwsMetadataCredentials(const string& metadataUrl, string& accessId, stri
 
         if (!Json::parseFromStream(readerBuilder, s, &jsonData, &errs)) {
             S3WARN("Failed to parse JSON: %s", errs.c_str());
-            curl_easy_cleanup(curl);
             return false;
         }
-    
+
         if (!jsonData.isMember("AccessKeyId") || !jsonData.isMember("SecretAccessKey") || !jsonData.isMember("Token")) {
             S3WARN("JSON response does not contain required fields.");
-            curl_easy_cleanup(curl);
             return false;
         }
 
@@ -240,8 +237,9 @@ bool GetAwsMetadataCredentials(const string& metadataUrl, string& accessId, stri
         secret = jsonData["SecretAccessKey"].asString();
         token = jsonData["Token"].asString();
 
-        curl_easy_cleanup(curl);
         return true;
+    } catch (const std::exception& e) {
+        S3_DIE(S3QueryAbort, "Failed to get aws credentials from metadata service");
+        return false;
     }
-    return false;
 }

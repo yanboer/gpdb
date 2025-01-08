@@ -1,6 +1,7 @@
 #ifndef __S3_CONF_H__
 #define __S3_CONF_H__
 
+#include "s3common_headers.h"
 #include "gpcommon.h"
 
 // segment id

@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <cjson/cJSON.h>
 
 using std::map;
 using std::string;
