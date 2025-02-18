@@ -1619,8 +1619,10 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 			}
 
 			if (foundRTI)
+			{
 				ExecutorMarkTransactionDoesWrites();
 				continue;
+			}
         }
 
 		PreventCommandIfReadOnly(CreateCommandTag((Node *) plannedstmt));
