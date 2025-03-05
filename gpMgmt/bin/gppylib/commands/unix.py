@@ -72,6 +72,27 @@ def check_pid(pid):
         return True
 
 
+def check_pids_on_remotehost(pids, host):
+    pid_set = set(pids)
+    existing_pids = set()
+
+    # Run ps command on remote host to get all running PIDs
+    cmd = Command(name='check pids on remote host', cmdStr='ps -e -o pid=', ctxt=REMOTE, remoteHost=host)
+    cmd.run()
+    if cmd.get_results().rc == 0:
+        for line in cmd.get_results().stdout.split():
+            try:
+                pid = int(line.strip())
+                if pid in pid_set:
+                    existing_pids.add(pid)
+            except ValueError:
+                pass # Ignore any error while converting to int from str
+
+    # Create a dictionary with the existence status of each PID
+    pid_existence = {pid: (pid in existing_pids) for pid in pids}
+    return pid_existence
+
+
 """
 Given the data directory, pid list and host,
 kill -9 all the processes from the pid list.
@@ -79,14 +100,25 @@ kill -9 all the processes from the pid list.
 def kill_9_segment_processes(datadir, pids, host):
     logger.info('Terminating processes for segment {0}'.format(datadir))
 
-    for pid in pids:
-        if check_pid_on_remotehost(pid, host):
+    pid_existence = check_pids_on_remotehost(pids, host)
+    existing_pids = [str(pid) for pid, exists in pid_existence.items() if exists]
 
-            cmd = Command("kill -9 process", ("kill -9 {0}".format(pid)), ctxt=REMOTE, remoteHost=host)
-            cmd.run()
+    if not existing_pids:
+        logger.info('No running processes for segment {0}'.format(datadir))
+        return
 
-            if cmd.get_results().rc != 0:
-                logger.error('Failed to kill process {0} for segment {1}: {2}'.format(pid, datadir, cmd.get_results().stderr))
+    pids_str = ' '.join(existing_pids)
+    cmd = Command(
+        name="kill -9 processes",
+        cmdStr="kill -9 {0}".format(pids_str),
+        ctxt=REMOTE,
+        remoteHost=host
+    )
+    cmd.run()
+
+    if cmd.get_results().rc != 0:
+        logger.error('Failed to kill processes {0} for segment {1}: {2}'.format(
+            pids_str, datadir, cmd.get_results().stderr))
 
 
 def logandkill(pid, sig):
