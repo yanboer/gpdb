@@ -399,9 +399,23 @@ analyze_rel_internal(Oid relid, RangeVar *relation,
 	/*
 	 * OK, let's do it.  First let other backends know I'm in ANALYZE.
 	 */
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	lock_hold_start = GetCurrentTimestamp();
+
+
 	MyPgXact->vacuumFlags |= PROC_IN_ANALYZE;
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "analyze_rel_internal Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "analyze_rel_internal Lock hold time: %ld milliseconds", duration_hold);
+	}
 	pgstat_progress_start_command(PROGRESS_COMMAND_ANALYZE,
 								  RelationGetRelid(onerel));
 
@@ -456,9 +470,26 @@ analyze_rel_internal(Oid relid, RangeVar *relation,
 	 * Reset my PGXACT flag.  Note: we need this here, and not in vacuum_rel,
 	 * because the vacuum flag is cleared by the end-of-xact code.
 	 */
+
+	 long duration_acquire2, duration_hold2;
+	 TimestampTz lock_acquire_start2, lock_hold_start2;
+
+	lock_acquire_start2 = GetCurrentTimestamp();
+	 
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start2 = GetCurrentTimestamp();
+
 	MyPgXact->vacuumFlags &= ~PROC_IN_ANALYZE;
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire2 = checkProcArrayLockDuration(lock_acquire_start2, GetCurrentTimestamp());
+	duration_hold2 = checkProcArrayLockDuration(lock_hold_start2, GetCurrentTimestamp());
+
+	if (duration_acquire2 > 0 || duration_hold2 > 0 ) {
+		elog(LOG, "analyze_rel_internal Lock acquire time: %ld milliseconds", duration_acquire2);
+		elog(LOG, "analyze_rel_internal Lock hold time: %ld milliseconds", duration_hold2);
+	}
 }
 
 /*

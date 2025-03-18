@@ -8172,7 +8172,13 @@ StartupXLOG(void)
 	XLogCtl->lastSegSwitchLSN = EndOfLog;
 
 	/* also initialize latestCompletedXid, to nextXid - 1 */
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 	ShmemVariableCache->latestCompletedXid = XidFromFullTransactionId(ShmemVariableCache->nextFullXid);
 	ShmemVariableCache->latestCompletedGxid = ShmemVariableCache->nextGxid;
 	TransactionIdRetreat(ShmemVariableCache->latestCompletedXid);
@@ -8181,6 +8187,14 @@ StartupXLOG(void)
 			 ShmemVariableCache->latestCompletedXid,
 			 XidFromFullTransactionId(ShmemVariableCache->nextFullXid));
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "StartupXLOG Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "StartupXLOG Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	/*
 	 * Start up the commit log and subtrans, if not already done for hot

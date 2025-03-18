@@ -302,7 +302,13 @@ ProcArrayAdd(PGPROC *proc)
 	ProcArrayStruct *arrayP = procArray;
 	int			index;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	SIMPLE_FAULT_INJECTOR("procarray_add");
 
@@ -344,6 +350,14 @@ ProcArrayAdd(PGPROC *proc)
 	arrayP->numProcs++;
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ProcArrayAdd Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ProcArrayAdd Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 /*
@@ -368,7 +382,13 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 		DisplayXidCache();
 #endif
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	if (TransactionIdIsValid(latestXid))
 	{
@@ -408,12 +428,29 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 			arrayP->pgprocnos[arrayP->numProcs - 1] = -1;	/* for debugging */
 			arrayP->numProcs--;
 			LWLockRelease(ProcArrayLock);
+
+			duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+			duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+			if (duration_acquire > 0 || duration_hold > 0 ) {
+				elog(LOG, "ProcArrayRemove Lock acquire time: %ld milliseconds", duration_acquire);
+				elog(LOG, "ProcArrayRemove Lock hold time: %ld milliseconds", duration_hold);
+			}
+
 			return;
 		}
 	}
 
 	/* Oops */
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ProcArrayRemove Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ProcArrayRemove Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	elog(LOG, "failed to find proc %p in ProcArray", proc);
 }
@@ -888,10 +925,16 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 	 * with that.
 	 */
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	/*
 	 * Nobody else is running yet, but take locks anyhow
 	 */
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	/*
 	 * KnownAssignedXids is sorted so we cannot just add the xids, we have to
@@ -1032,6 +1075,14 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 
 	LWLockRelease(ProcArrayLock);
 
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ProcArrayApplyRecoveryInfo Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ProcArrayApplyRecoveryInfo Lock hold time: %ld milliseconds", duration_hold);
+	}
+
 	/* ShmemVariableCache->nextFullXid must be beyond any observed xid. */
 	AdvanceNextFullTransactionIdPastXid(latestObservedXid);
 
@@ -1091,10 +1142,15 @@ ProcArrayApplyXidAssignment(TransactionId topxid,
 	if (standbyState == STANDBY_INITIALIZED)
 		return;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	/*
 	 * Uses same locking as transaction commit
 	 */
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	lock_hold_start = GetCurrentTimestamp();
 
 	/*
 	 * Remove subxids from known-assigned-xacts.
@@ -1108,6 +1164,14 @@ ProcArrayApplyXidAssignment(TransactionId topxid,
 		procArray->lastOverflowedXid = max_xid;
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ProcArrayApplyXidAssignment Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ProcArrayApplyXidAssignment Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 /*
@@ -1199,7 +1263,13 @@ TransactionIdIsInProgress(TransactionId xid)
 					 errmsg("out of memory")));
 	}
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	/*
 	 * Now that we have the lock, we can check latestCompletedXid; if the
@@ -1208,6 +1278,15 @@ TransactionIdIsInProgress(TransactionId xid)
 	if (TransactionIdPrecedes(ShmemVariableCache->latestCompletedXid, xid))
 	{
 		LWLockRelease(ProcArrayLock);
+
+		duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+		duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+	
+		if (duration_acquire > 0 || duration_hold > 0 ) {
+			elog(LOG, "TransactionIdIsInProgress Lock acquire time: %ld milliseconds", duration_acquire);
+			elog(LOG, "TransactionIdIsInProgress Lock hold time: %ld milliseconds", duration_hold);
+		}
+
 		xc_by_latest_xid_inc();
 		return true;
 	}
@@ -1237,6 +1316,15 @@ TransactionIdIsInProgress(TransactionId xid)
 		if (TransactionIdEquals(pxid, xid))
 		{
 			LWLockRelease(ProcArrayLock);
+
+			duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+			duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+		
+			if (duration_acquire > 0 || duration_hold > 0 ) {
+				elog(LOG, "TransactionIdIsInProgress Lock acquire time: %ld milliseconds", duration_acquire);
+				elog(LOG, "TransactionIdIsInProgress Lock hold time: %ld milliseconds", duration_hold);
+			}
+
 			xc_by_main_xid_inc();
 			return true;
 		}
@@ -1261,6 +1349,15 @@ TransactionIdIsInProgress(TransactionId xid)
 			if (TransactionIdEquals(cxid, xid))
 			{
 				LWLockRelease(ProcArrayLock);
+
+				duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+				duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+			
+				if (duration_acquire > 0 || duration_hold > 0 ) {
+					elog(LOG, "TransactionIdIsInProgress Lock acquire time: %ld milliseconds", duration_acquire);
+					elog(LOG, "TransactionIdIsInProgress Lock hold time: %ld milliseconds", duration_hold);
+				}
+
 				xc_by_child_xid_inc();
 				return true;
 			}
@@ -1289,6 +1386,14 @@ TransactionIdIsInProgress(TransactionId xid)
 		if (KnownAssignedXidExists(xid))
 		{
 			LWLockRelease(ProcArrayLock);
+
+			duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+			duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+		
+			if (duration_acquire > 0 || duration_hold > 0 ) {
+				elog(LOG, "TransactionIdIsInProgress Lock acquire time: %ld milliseconds", duration_acquire);
+				elog(LOG, "TransactionIdIsInProgress Lock hold time: %ld milliseconds", duration_hold);
+			}
 			xc_by_known_assigned_inc();
 			return true;
 		}
@@ -1305,6 +1410,14 @@ TransactionIdIsInProgress(TransactionId xid)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "TransactionIdIsInProgress Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "TransactionIdIsInProgress Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	/*
 	 * If none of the relevant caches overflowed, we know the Xid is not
@@ -1375,7 +1488,13 @@ TransactionIdIsActive(TransactionId xid)
 	if (TransactionIdPrecedes(xid, RecentXmin))
 		return false;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (i = 0; i < arrayP->numProcs; i++)
 	{
@@ -1401,6 +1520,14 @@ TransactionIdIsActive(TransactionId xid)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "TransactionIdIsActive Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "TransactionIdIsActive Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return result;
 }
@@ -1517,7 +1644,13 @@ GetLocalOldestXmin(Relation rel, int flags)
 	/* Cannot look for individual databases during recovery */
 	Assert(allDbs || !RecoveryInProgress());
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	/*
 	 * We initialize the MIN() calculation with latestCompletedXid + 1. This
@@ -1582,6 +1715,14 @@ GetLocalOldestXmin(Relation rel, int flags)
 
 		LWLockRelease(ProcArrayLock);
 
+		duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+		duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+	
+		if (duration_acquire > 0 || duration_hold > 0 ) {
+			elog(LOG, "GetLocalOldestXmin Lock acquire time: %ld milliseconds", duration_acquire);
+			elog(LOG, "GetLocalOldestXmin Lock hold time: %ld milliseconds", duration_hold);
+		}
+
 		if (TransactionIdIsNormal(kaxmin) &&
 			TransactionIdPrecedes(kaxmin, result))
 			result = kaxmin;
@@ -1592,6 +1733,14 @@ GetLocalOldestXmin(Relation rel, int flags)
 		 * No other information needed, so release the lock immediately.
 		 */
 		LWLockRelease(ProcArrayLock);
+
+		duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+		duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+	
+		if (duration_acquire > 0 || duration_hold > 0 ) {
+			elog(LOG, "GetLocalOldestXmin Lock acquire time: %ld milliseconds", duration_acquire);
+			elog(LOG, "GetLocalOldestXmin Lock hold time: %ld milliseconds", duration_hold);
+		}
 
 		/*
 		 * Compute the cutoff XID by subtracting vacuum_defer_cleanup_age,
@@ -1900,7 +2049,13 @@ getAllDistributedXactStatus(TMGALLXACTSTATUS **allDistributedXactStatus)
 	all->count = 0;
 	all->statusArray = NULL;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 	count = arrayP->numProcs;
 	if (count > 0)
 	{
@@ -1927,6 +2082,13 @@ getAllDistributedXactStatus(TMGALLXACTSTATUS **allDistributedXactStatus)
 	}
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "getAllDistributedXactStatus Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "getAllDistributedXactStatus Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	*allDistributedXactStatus = all;
 }
@@ -1983,7 +2145,14 @@ getDtxCheckPointInfo(char **result, int *result_size)
 	 * such transactions will be executed twice during crash recovery.
 	 * Although redundant, this is not a problem.
 	 */
+
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (i = 0; i < arrayP->numProcs; i++)
 	{
@@ -2001,6 +2170,14 @@ getDtxCheckPointInfo(char **result, int *result_size)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "getDtxCheckPointInfo Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "getDtxCheckPointInfo Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	gxact_checkpoint->committedCount = actual;
 
@@ -2058,6 +2235,10 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 
 	Assert(ds->inProgressXidArray != NULL);
 
+	long duration1, duration2;
+	TimestampTz create_snapshot_start1, create_snapshot_start2;
+
+	create_snapshot_start1 = GetCurrentTimestamp();
 	/*
 	 * Gather up current in-progress global transactions for the distributed
 	 * snapshot.
@@ -2109,6 +2290,8 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 			 gxid);
 	}
 
+	create_snapshot_start2 = GetCurrentTimestamp();
+
 	distribSnapshotId = pg_atomic_add_fetch_u32((pg_atomic_uint32 *)shmNextSnapshotId, 1);
 
 	/*
@@ -2139,6 +2322,14 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 		 "[Distributed Snapshot #%u] *Create* (gxid = "UINT64_FORMAT"')",
 		 distribSnapshotId,
 		 MyTmGxact->gxid);
+
+	duration1 = checkProcArrayLockDuration(create_snapshot_start1, GetCurrentTimestamp());
+	duration2 = checkProcArrayLockDuration(create_snapshot_start2, GetCurrentTimestamp());
+
+	if (duration1 > 0 || duration2 > 0) {
+		elog(LOG, "CreateDistributedSnapshot Lock hold time(duration1): %ld milliseconds, count: %d", duration1, count);
+		elog(LOG, "CreateDistributedSnapshot Lock hold time(duration2): %ld milliseconds, count: %d", duration2, count);
+	}
 
 	return true;
 }
@@ -2301,7 +2492,14 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 * It is sufficient to get shared lock on ProcArrayLock, even if we are
 	 * going to set MyPgXact->xmin.
 	 */
+
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	/* xmax is always latestCompletedXid + 1 */
 	xmax = ShmemVariableCache->latestCompletedXid;
@@ -2501,11 +2699,21 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		MyPgXact->xmin = TransactionXmin = xmin;
 	}
 
+	long duration_create_snapshot;
+	TimestampTz create_snapshot_start;
+
 	/* GP: QD takes a distributed snapshot iff QD not in retry phase and the query needs distributed snapshot */
 	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot 
 			&& needDistributedSnapshot)
 	{
+		create_snapshot_start = GetCurrentTimestamp();
 		CreateDistributedSnapshot(ds);
+
+		duration_create_snapshot = checkProcArrayLockDuration(create_snapshot_start, GetCurrentTimestamp());
+		if (duration_create_snapshot > 0) {
+			elog(LOG, "CreateDistributedSnapshot Lock hold time: %ld milliseconds", duration_create_snapshot);
+		}
+
 		snapshot->haveDistribSnapshot = true;
 
 		ereport(Debug_print_full_dtm ? LOG : DEBUG5,
@@ -2513,6 +2721,14 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetSnapshotData Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetSnapshotData Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	/*
 	 * Update globalxmin to include actual process xids.  This is a slightly
@@ -2654,7 +2870,14 @@ ProcArrayInstallImportedXmin(TransactionId xmin,
 		return false;
 
 	/* Get lock so source xact can't end while we're doing this */
+
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -2705,6 +2928,13 @@ ProcArrayInstallImportedXmin(TransactionId xmin,
 	}
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ProcArrayInstallImportedXmin Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ProcArrayInstallImportedXmin Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return result;
 }
@@ -2729,7 +2959,14 @@ ProcArrayInstallRestoredXmin(TransactionId xmin, PGPROC *proc)
 	Assert(proc != NULL);
 
 	/* Get lock so source xact can't end while we're doing this */
+
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	pgxact = &allPgXact[proc->pgprocno];
 
@@ -2749,6 +2986,14 @@ ProcArrayInstallRestoredXmin(TransactionId xmin, PGPROC *proc)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ProcArrayInstallRestoredXmin Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ProcArrayInstallRestoredXmin Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return result;
 }
@@ -2981,7 +3226,14 @@ GetOldestActiveTransactionId(void)
 	/*
 	 * Spin over procArray collecting all xids and subxids.
 	 */
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
+
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		int			pgprocno = arrayP->pgprocnos[index];
@@ -3004,6 +3256,14 @@ GetOldestActiveTransactionId(void)
 		 */
 	}
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetOldestActiveTransactionId Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetOldestActiveTransactionId Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return oldestRunningXid;
 }
@@ -3137,7 +3397,13 @@ GetVirtualXIDsDelayingChkptGuts(int *nvxids, int type)
 	vxids = (VirtualTransactionId *)
 		palloc(sizeof(VirtualTransactionId) * arrayP->maxProcs);
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3157,6 +3423,14 @@ GetVirtualXIDsDelayingChkptGuts(int *nvxids, int type)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetVirtualXIDsDelayingChkptGuts Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetVirtualXIDsDelayingChkptGuts Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	*nvxids = count;
 	return vxids;
@@ -3201,7 +3475,13 @@ HaveVirtualXIDsDelayingChkptGuts(VirtualTransactionId *vxids, int nvxids,
 
 	Assert(type != 0);
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3232,6 +3512,14 @@ HaveVirtualXIDsDelayingChkptGuts(VirtualTransactionId *vxids, int nvxids,
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "HaveVirtualXIDsDelayingChkptGuts Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "HaveVirtualXIDsDelayingChkptGuts Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return result;
 }
@@ -3316,11 +3604,25 @@ BackendPidGetProc(int pid)
 	if (pid == 0)				/* never match dummy PGPROCs */
 		return NULL;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	result = BackendPidGetProcWithLock(pid);
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "BackendPidGetProc Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "BackendPidGetProc Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return result;
 }
@@ -3378,7 +3680,13 @@ BackendXidGetPid(TransactionId xid)
 	if (xid == InvalidTransactionId)	/* never match invalid xid */
 		return 0;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3394,6 +3702,14 @@ BackendXidGetPid(TransactionId xid)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "BackendXidGetPid Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "BackendXidGetPid Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return result;
 }
@@ -3450,7 +3766,13 @@ GetCurrentVirtualXIDs(TransactionId limitXmin, bool excludeXmin0,
 	vxids = (VirtualTransactionId *)
 		palloc(sizeof(VirtualTransactionId) * arrayP->maxProcs);
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3489,6 +3811,14 @@ GetCurrentVirtualXIDs(TransactionId limitXmin, bool excludeXmin0,
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetCurrentVirtualXIDs Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetCurrentVirtualXIDs Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	*nvxids = count;
 	return vxids;
@@ -3547,7 +3877,13 @@ GetConflictingVirtualXIDs(TransactionId limitXmin, Oid dbOid)
 					 errmsg("out of memory")));
 	}
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3587,6 +3923,14 @@ GetConflictingVirtualXIDs(TransactionId limitXmin, Oid dbOid)
 
 	LWLockRelease(ProcArrayLock);
 
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetConflictingVirtualXIDs Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetConflictingVirtualXIDs Lock hold time: %ld milliseconds", duration_hold);
+	}
+
 	/* add the terminator */
 	vxids[count].backendId = InvalidBackendId;
 	vxids[count].localTransactionId = InvalidLocalTransactionId;
@@ -3613,7 +3957,13 @@ SignalVirtualTransaction(VirtualTransactionId vxid, ProcSignalReason sigmode,
 	int			index;
 	pid_t		pid = 0;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3641,6 +3991,14 @@ SignalVirtualTransaction(VirtualTransactionId vxid, ProcSignalReason sigmode,
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "SignalVirtualTransaction Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "SignalVirtualTransaction Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return pid;
 }
@@ -3715,7 +4073,13 @@ CountDBBackends(Oid databaseid)
 	int			count = 0;
 	int			index;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3731,6 +4095,14 @@ CountDBBackends(Oid databaseid)
 
 	LWLockRelease(ProcArrayLock);
 
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "CountDBBackends Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "CountDBBackends Lock hold time: %ld milliseconds", duration_hold);
+	}
+
 	return count;
 }
 
@@ -3745,7 +4117,13 @@ CountDBConnections(Oid databaseid)
 	int			count = 0;
 	int			index;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3762,6 +4140,13 @@ CountDBConnections(Oid databaseid)
 	}
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "CountDBConnections Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "CountDBConnections Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return count;
 }
@@ -3777,7 +4162,13 @@ CancelDBBackends(Oid databaseid, ProcSignalReason sigmode, bool conflictPending)
 	pid_t		pid = 0;
 
 	/* tell all backends to die */
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3804,6 +4195,13 @@ CancelDBBackends(Oid databaseid, ProcSignalReason sigmode, bool conflictPending)
 	}
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "CancelDBBackends Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "CancelDBBackends Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 /*
@@ -3816,7 +4214,13 @@ CountUserBackends(Oid roleid)
 	int			count = 0;
 	int			index;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -3832,6 +4236,13 @@ CountUserBackends(Oid roleid)
 	}
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "CountUserBackends Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "CountUserBackends Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return count;
 }
@@ -3846,7 +4257,13 @@ SignalMppBackends(int sig)
 	int				 count;
 	int				 index;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	count = 0;
 	for (index = 0; index < arrayP->numProcs; index++)
@@ -3875,6 +4292,14 @@ SignalMppBackends(int sig)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "SignalMppBackends Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "SignalMppBackends Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return count;
 }
@@ -3923,7 +4348,14 @@ CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared)
 
 		*nbackends = *nprepared = 0;
 
+		
+		long duration_acquire, duration_hold;
+		TimestampTz lock_acquire_start, lock_hold_start;
+		lock_acquire_start = GetCurrentTimestamp();
+		
 		LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+		lock_hold_start = GetCurrentTimestamp();
 
 		for (index = 0; index < arrayP->numProcs; index++)
 		{
@@ -3950,6 +4382,14 @@ CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared)
 		}
 
 		LWLockRelease(ProcArrayLock);
+
+		duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+		duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+	
+		if (duration_acquire > 0 || duration_hold > 0 ) {
+			elog(LOG, "CountOtherDBBackends Lock acquire time: %ld milliseconds", duration_acquire);
+			elog(LOG, "CountOtherDBBackends Lock hold time: %ld milliseconds", duration_hold);
+		}
 
 		if (!found)
 			return false;		/* no conflicting backends, so done */
@@ -3983,14 +4423,30 @@ ProcArraySetReplicationSlotXmin(TransactionId xmin, TransactionId catalog_xmin,
 {
 	Assert(!already_locked || LWLockHeldByMe(ProcArrayLock));
 
-	if (!already_locked)
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+
+	if (!already_locked){
+		lock_acquire_start = GetCurrentTimestamp();
+	
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+		lock_hold_start = GetCurrentTimestamp();
+	}
 
 	procArray->replication_slot_xmin = xmin;
 	procArray->replication_slot_catalog_xmin = catalog_xmin;
 
-	if (!already_locked)
+	if (!already_locked) {
 		LWLockRelease(ProcArrayLock);
+		duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+		duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+	
+		if (duration_acquire > 0 || duration_hold > 0 ) {
+			elog(LOG, "ProcArraySetReplicationSlotXmin Lock acquire time: %ld milliseconds", duration_acquire);
+			elog(LOG, "ProcArraySetReplicationSlotXmin Lock hold time: %ld milliseconds", duration_hold);
+		}
+	}
 
 	elog(DEBUG1, "xmin required by slots: data %u, catalog %u",
 		 xmin, catalog_xmin);
@@ -4006,7 +4462,13 @@ void
 ProcArrayGetReplicationSlotXmin(TransactionId *xmin,
 								TransactionId *catalog_xmin)
 {
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	if (xmin != NULL)
 		*xmin = procArray->replication_slot_xmin;
@@ -4015,6 +4477,13 @@ ProcArrayGetReplicationSlotXmin(TransactionId *xmin,
 		*catalog_xmin = procArray->replication_slot_catalog_xmin;
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ProcArrayGetReplicationSlotXmin Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ProcArrayGetReplicationSlotXmin Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 
@@ -4055,7 +4524,13 @@ XidCacheRemoveRunningXids(TransactionId xid,
 	 * relevant fields of MyProc/MyPgXact.  But we do have to be careful about
 	 * our own writes being well ordered.
 	 */
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	/*
 	 * Under normal circumstances xid and xids[] will be in increasing order,
@@ -4104,6 +4579,14 @@ XidCacheRemoveRunningXids(TransactionId xid,
 		ShmemVariableCache->latestCompletedXid = latestXid;
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "XidCacheRemoveRunningXids Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "XidCacheRemoveRunningXids Lock hold time: %ld milliseconds", duration_hold);
+	}
+
 }
 
 #ifdef XIDCACHE_DEBUG
@@ -4136,8 +4619,14 @@ FindProcByGpSessionId(long gp_session_id)
 	int			index;
 
 	Assert(gp_session_id > 0);
-		
+	
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -4157,6 +4646,13 @@ FindProcByGpSessionId(long gp_session_id)
 	}
 		
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "FindProcByGpSessionId Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "FindProcByGpSessionId Lock hold time: %ld milliseconds", duration_hold);
+	}
 	return NULL;
 }
 
@@ -4173,7 +4669,13 @@ GetRunningProcSessionIds(void)
 	int			index;
 	List 			*list = NIL;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -4183,6 +4685,13 @@ GetRunningProcSessionIds(void)
 	}
 		
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetRunningProcSessionIds Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetRunningProcSessionIds Lock hold time: %ld milliseconds", duration_hold);
+	}
 	return list;
 }
 
@@ -4332,7 +4841,13 @@ ExpireTreeKnownAssignedTransactionIds(TransactionId xid, int nsubxids,
 	/*
 	 * Uses same locking as transaction commit
 	 */
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	KnownAssignedXidsRemoveTree(xid, nsubxids, subxids);
 
@@ -4342,6 +4857,14 @@ ExpireTreeKnownAssignedTransactionIds(TransactionId xid, int nsubxids,
 		ShmemVariableCache->latestCompletedXid = max_xid;
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "xxx Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "xxx Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 /*
@@ -4351,7 +4874,15 @@ ExpireTreeKnownAssignedTransactionIds(TransactionId xid, int nsubxids,
 void
 ExpireAllKnownAssignedTransactionIds(void)
 {
+
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
+
 	KnownAssignedXidsRemovePreceding(InvalidTransactionId);
 
 	/*
@@ -4361,6 +4892,14 @@ ExpireAllKnownAssignedTransactionIds(void)
 	 */
 	procArray->lastOverflowedXid = InvalidTransactionId;
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ExpireAllKnownAssignedTransactionIds Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ExpireAllKnownAssignedTransactionIds Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 /*
@@ -4371,7 +4910,13 @@ ExpireAllKnownAssignedTransactionIds(void)
 void
 ExpireOldKnownAssignedTransactionIds(TransactionId xid)
 {
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	/*
 	 * Reset lastOverflowedXid if we know all transactions that have been
@@ -4383,6 +4928,14 @@ ExpireOldKnownAssignedTransactionIds(TransactionId xid)
 		procArray->lastOverflowedXid = InvalidTransactionId;
 	KnownAssignedXidsRemovePreceding(xid);
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ExpireOldKnownAssignedTransactionIds Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ExpireOldKnownAssignedTransactionIds Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 
@@ -4595,22 +5148,39 @@ KnownAssignedXidsAdd(TransactionId from_xid, TransactionId to_xid,
 		elog(ERROR, "out-of-order XID insertion in KnownAssignedXids");
 	}
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+
 	/*
 	 * If our xids won't fit in the remaining space, compress out free space
 	 */
 	if (head + nxids > pArray->maxKnownAssignedXids)
 	{
 		/* must hold lock to compress */
-		if (!exclusive_lock)
+		if (!exclusive_lock){
+			lock_acquire_start = GetCurrentTimestamp();
+
 			LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+			lock_hold_start = GetCurrentTimestamp();
+		}
 
 		KnownAssignedXidsCompress(true);
 
 		head = pArray->headKnownAssignedXids;
 		/* note: we no longer care about the tail pointer */
 
-		if (!exclusive_lock)
+		if (!exclusive_lock) {
 			LWLockRelease(ProcArrayLock);
+
+			duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+			duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+		
+			if (duration_acquire > 0 || duration_hold > 0 ) {
+				elog(LOG, "KnownAssignedXidsAdd Lock acquire time: %ld milliseconds", duration_acquire);
+				elog(LOG, "KnownAssignedXidsAdd Lock hold time: %ld milliseconds", duration_hold);
+			}
+		}
 
 		/*
 		 * If it still won't fit then we're out of memory
@@ -5042,7 +5612,13 @@ ListAllGxid(void)
 	int			index;
 	DistributedTransactionId gxid;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -5057,6 +5633,13 @@ ListAllGxid(void)
 	}
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ListAllGxid Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ListAllGxid Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return gxids;
 }
@@ -5072,7 +5655,13 @@ IsDtxInProgress(DistributedTransactionId gxid)
 	ProcArrayStruct *arrayP = procArray;
 
 	retval = false;
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (i = 0; i < arrayP->numProcs; i++)
 	{
@@ -5086,6 +5675,14 @@ IsDtxInProgress(DistributedTransactionId gxid)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "IsDtxInProgress Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "IsDtxInProgress Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return retval;
 }
@@ -5101,7 +5698,13 @@ GetPidByGxid(DistributedTransactionId gxid)
 	int pid = 0;
 	ProcArrayStruct *arrayP = procArray;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	for (i = 0; i < arrayP->numProcs; i++)
 	{
@@ -5116,6 +5719,14 @@ GetPidByGxid(DistributedTransactionId gxid)
 
 	LWLockRelease(ProcArrayLock);
 
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetPidByGxid Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetPidByGxid Lock hold time: %ld milliseconds", duration_hold);
+	}
+
 	return pid;
 }
 
@@ -5127,7 +5738,14 @@ LocalXidGetDistributedXid(TransactionId xid)
 	ProcArrayStruct *arrayP = procArray;
 
 	SIMPLE_FAULT_INJECTOR("before_get_distributed_xid");
+
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		int		 pgprocno = arrayP->pgprocnos[index];
@@ -5140,6 +5758,14 @@ LocalXidGetDistributedXid(TransactionId xid)
 		}
 	}
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "LocalXidGetDistributedXid Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "LocalXidGetDistributedXid Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	/* The transaction has already committed on segment */
 	if (gxid == InvalidDistributedTransactionId)
@@ -5159,13 +5785,26 @@ KnownAssignedXidsReset(void)
 {
 	ProcArrayStruct *pArray = procArray;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	pArray->numKnownAssignedXids = 0;
 	pArray->tailKnownAssignedXids = 0;
 	pArray->headKnownAssignedXids = 0;
 
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "KnownAssignedXidsReset Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "KnownAssignedXidsReset Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 int
@@ -5174,7 +5813,13 @@ GetSessionIdByPid(int pid)
 	int sessionId = -1;
 	ProcArrayStruct *arrayP = procArray;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 	for (int i = 0; i < arrayP->numProcs; i++)
 	{
 		volatile PGPROC *proc = &allProcs[arrayP->pgprocnos[i]];
@@ -5185,6 +5830,14 @@ GetSessionIdByPid(int pid)
 		}
 	}
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetSessionIdByPid Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetSessionIdByPid Lock hold time: %ld milliseconds", duration_hold);
+	}
 	return sessionId;
 }
 
@@ -5208,7 +5861,13 @@ ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE);
 	AssertImply(Gp_role == GP_ROLE_EXECUTE, isExecutor);
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 	for (int i = 0; i < arrayP->numProcs; i++)
 	{
 		PGPROC	   *proc = &allProcs[arrayP->pgprocnos[i]];
@@ -5292,6 +5951,14 @@ ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 	}
 	LWLockRelease(ProcArrayLock);
 
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ResGroupMoveSignalTarget Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ResGroupMoveSignalTarget Lock hold time: %ld milliseconds", duration_hold);
+	}
+
 	if (!found && !isExecutor)
 		elog(NOTICE, "cannot find target process");
 
@@ -5322,7 +5989,13 @@ ResGroupMoveCheckTargetReady(int sessionId, bool *clean, bool *result)
 
 	*result = false;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 	for (int i = 0; i < arrayP->numProcs; i++)
 	{
 		PGPROC	   *proc = &allProcs[arrayP->pgprocnos[i]];
@@ -5374,6 +6047,14 @@ ResGroupMoveCheckTargetReady(int sessionId, bool *clean, bool *result)
 		break;
 	}
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ResGroupMoveCheckTargetReady Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ResGroupMoveCheckTargetReady Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 /*
@@ -5389,7 +6070,13 @@ ResGroupMoveNotifyInitiator(pid_t callerPid)
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 	for (int i = 0; i < arrayP->numProcs; i++)
 	{
 		PGPROC	   *proc = &allProcs[arrayP->pgprocnos[i]];
@@ -5401,4 +6088,12 @@ ResGroupMoveNotifyInitiator(pid_t callerPid)
 		break;
 	}
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ResGroupMoveNotifyInitiator Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ResGroupMoveNotifyInitiator Lock hold time: %ld milliseconds", duration_hold);
+	}
 }

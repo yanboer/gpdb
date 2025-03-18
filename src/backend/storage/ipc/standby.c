@@ -1044,7 +1044,17 @@ LogStandbySnapshot(void)
 	 * Log details of all in-progress transactions. This should be the last
 	 * record we write, because standby will open up when it sees this.
 	 */
+
+	long duration_acquire;
+	TimestampTz lock_acquire_start;
+	lock_acquire_start = GetCurrentTimestamp();
 	running = GetRunningTransactionData();
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 ) {
+		elog(LOG, "LogStandbySnapshot Lock acquire time: %ld milliseconds", duration_acquire);
+	}
 
 	/*
 	 * GetRunningTransactionData() acquired ProcArrayLock, we must release it.

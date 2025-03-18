@@ -2329,7 +2329,13 @@ gp_get_suboverflowed_backends(PG_FUNCTION_ARGS)
 	int 			i;
 	ArrayBuildState *astate = NULL;
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 	for (i = 0; i < ProcGlobal->allProcCount; i++)
 	{
 		bool overflowed = false;
@@ -2343,6 +2349,13 @@ gp_get_suboverflowed_backends(PG_FUNCTION_ARGS)
 		PG_CATCH();
 		{
 			LWLockRelease(ProcArrayLock);
+			duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+			duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+		
+			if (duration_acquire > 0 || duration_hold > 0 ) {
+				elog(LOG, "gp_get_suboverflowed_backends Lock acquire time: %ld milliseconds", duration_acquire);
+				elog(LOG, "gp_get_suboverflowed_backends Lock hold time: %ld milliseconds", duration_hold);
+			}
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
@@ -2353,6 +2366,13 @@ gp_get_suboverflowed_backends(PG_FUNCTION_ARGS)
 									  false, INT4OID, CurrentMemoryContext);
 	}
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "gp_get_suboverflowed_backends Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "gp_get_suboverflowed_backends Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	if (astate)
 		PG_RETURN_DATUM(makeArrayResult(astate,

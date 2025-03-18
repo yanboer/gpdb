@@ -165,9 +165,23 @@ StartupDecodingContext(List *output_plugin_options,
 	 */
 	if (!IsTransactionOrTransactionBlock())
 	{
+		long duration_acquire, duration_hold;
+		TimestampTz lock_acquire_start, lock_hold_start;
+		lock_acquire_start = GetCurrentTimestamp();
+		
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+		lock_hold_start = GetCurrentTimestamp();
+
 		MyPgXact->vacuumFlags |= PROC_IN_LOGICAL_DECODING;
 		LWLockRelease(ProcArrayLock);
+		duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+		duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+	
+		if (duration_acquire > 0 || duration_hold > 0 ) {
+			elog(LOG, "StartupDecodingContext Lock acquire time: %ld milliseconds", duration_acquire);
+			elog(LOG, "StartupDecodingContext Lock hold time: %ld milliseconds", duration_hold);
+		}
 	}
 
 	ctx->slot = slot;
@@ -310,7 +324,13 @@ CreateInitDecodingContext(char *plugin,
 	 *
 	 * ----
 	 */
+
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	 
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	lock_hold_start = GetCurrentTimestamp();
 
 	xmin_horizon = GetOldestSafeDecodingTransactionId(!need_full_snapshot);
 
@@ -324,6 +344,14 @@ CreateInitDecodingContext(char *plugin,
 	ReplicationSlotsComputeRequiredXmin(true);
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "CreateInitDecodingContext Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "CreateInitDecodingContext Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	ReplicationSlotMarkDirty();
 	ReplicationSlotSave();

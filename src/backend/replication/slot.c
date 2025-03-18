@@ -50,6 +50,7 @@
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "utils/builtins.h"
+#include "utils/timestamp.h"
 
 /*
  * Replication slot on-disk data structure.
@@ -538,9 +539,23 @@ ReplicationSlotRelease(void)
 	MyReplicationSlot = NULL;
 
 	/* might not have been set when we've been a plain slot */
+
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	lock_hold_start = GetCurrentTimestamp();
 	MyPgXact->vacuumFlags &= ~PROC_IN_LOGICAL_DECODING;
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ReplicationSlotRelease Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "ReplicationSlotRelease Lock hold time: %ld milliseconds", duration_hold);
+	}
 }
 
 /*

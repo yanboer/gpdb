@@ -1524,7 +1524,13 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 			PGPROC	   *autovac = GetBlockingAutoVacuumPgproc();
 			PGXACT	   *autovac_pgxact = &ProcGlobal->allPgXact[autovac->pgprocno];
 
+			long duration_acquire, duration_hold;
+			TimestampTz lock_acquire_start, lock_hold_start;
+			lock_acquire_start = GetCurrentTimestamp();
+			
 			LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+			lock_hold_start = GetCurrentTimestamp();
 
 			/*
 			 * Only do it if the worker is not working to protect against Xid
@@ -1549,6 +1555,14 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 
 				/* release lock as quickly as possible */
 				LWLockRelease(ProcArrayLock);
+
+				duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+				duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+			
+				if (duration_acquire > 0 || duration_hold > 0 ) {
+					elog(LOG, "ProcSleep Lock acquire time: %ld milliseconds", duration_acquire);
+					elog(LOG, "ProcSleep Lock hold time: %ld milliseconds", duration_hold);
+				}
 
 				/* send the autovacuum worker Back to Old Kent Road */
 				ereport(DEBUG1,
@@ -1577,8 +1591,16 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 				pfree(logbuf.data);
 				pfree(locktagbuf.data);
 			}
-			else
+			else {
 				LWLockRelease(ProcArrayLock);
+				duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+				duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+			
+				if (duration_acquire > 0 || duration_hold > 0 ) {
+					elog(LOG, "ProcSleep Lock acquire time: %ld milliseconds", duration_acquire);
+					elog(LOG, "ProcSleep Lock hold time: %ld milliseconds", duration_hold);
+				}
+			}
 
 			/* prevent signal from being sent again more than once */
 			allow_autovacuum_cancel = false;

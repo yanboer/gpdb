@@ -572,9 +572,23 @@ SnapBuildInitialSnapshot(SnapBuild *builder)
 	{
 		TransactionId safeXid;
 
+		long duration_acquire, duration_hold;
+		TimestampTz lock_acquire_start, lock_hold_start;
+		lock_acquire_start = GetCurrentTimestamp();
+		
 		LWLockAcquire(ProcArrayLock, LW_SHARED);
+		lock_hold_start = GetCurrentTimestamp();
+
 		safeXid = GetOldestSafeDecodingTransactionId(false);
 		LWLockRelease(ProcArrayLock);
+
+		duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+		duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+	
+		if (duration_acquire > 0 || duration_hold > 0 ) {
+			elog(LOG, "SnapBuildInitialSnapshot Lock acquire time: %ld milliseconds", duration_acquire);
+			elog(LOG, "SnapBuildInitialSnapshot Lock hold time: %ld milliseconds", duration_hold);
+		}
 
 		Assert(TransactionIdPrecedesOrEquals(safeXid, snap->xmin));
 	}

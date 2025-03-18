@@ -2239,13 +2239,28 @@ vacuum_rel(Oid relid, RangeVar *relation, VacuumParams *params,
 		 * MyPgXact->xid/xmin, else OldestXmin might appear to go backwards,
 		 * which is probably Not Good.
 		 */
+
+		 long duration_acquire, duration_hold;
+		 TimestampTz lock_acquire_start, lock_hold_start;
+		 lock_acquire_start = GetCurrentTimestamp();
+		 
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+		lock_hold_start = GetCurrentTimestamp();
 #if 0 /* Upstream code not applicable to GPDB */
 		MyPgXact->vacuumFlags |= PROC_IN_VACUUM;
 #endif
 		if (params->is_wraparound)
 			MyPgXact->vacuumFlags |= PROC_VACUUM_FOR_WRAPAROUND;
 		LWLockRelease(ProcArrayLock);
+
+		duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+		duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+	
+		if (duration_acquire > 0 || duration_hold > 0 ) {
+			elog(LOG, "vacuum_rel Lock acquire time: %ld milliseconds", duration_acquire);
+			elog(LOG, "vacuum_rel Lock hold time: %ld milliseconds", duration_hold);
+		}
 	}
 
 	/*

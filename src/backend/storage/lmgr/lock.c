@@ -4244,7 +4244,13 @@ GetBlockerStatusData(int blocked_pid)
 	 * does have the advantage that we're guaranteed to return a
 	 * self-consistent instantaneous state.
 	 */
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	lock_hold_start = GetCurrentTimestamp();
 
 	proc = BackendPidGetProcWithLock(blocked_pid);
 
@@ -4287,6 +4293,14 @@ GetBlockerStatusData(int blocked_pid)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "GetBlockerStatusData Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "GetBlockerStatusData Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	return data;
 }

@@ -3263,9 +3263,21 @@ PrepareTransaction(void)
 	 * done *after* the prepared transaction has been marked valid, else
 	 * someone may think it is unlocked and recyclable.
 	 */
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
+	
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	lock_hold_start = GetCurrentTimestamp();
 	ProcArrayClearTransaction(MyProc);
 	LWLockRelease(ProcArrayLock);
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "PrepareTransaction Lock acquire time: %ld milliseconds", duration_acquire);
+		elog(LOG, "PrepareTransaction Lock hold time: %ld milliseconds", duration_hold);
+	}
 
 	/*
 	 * In normal commit-processing, this is all non-critical post-transaction
