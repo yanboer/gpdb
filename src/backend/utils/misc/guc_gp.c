@@ -456,6 +456,9 @@ int gp_advance_dlog_xid_limit = 40960;
 /* jdbc */
 bool gp_disable_jdbc_cursor = true;
 
+/* test */
+int proc_array_log_lock_threshold = 1000;
+
 static const struct config_enum_entry gp_log_format_options[] = {
 	{"text", 0},
 	{"csv", 1},
@@ -4414,6 +4417,16 @@ struct config_int ConfigureNamesInt_gp[] =
         },
         &gp_advance_dlog_xid_limit,
 		40960, -1, INT_MAX,
+        NULL, NULL, NULL
+    },
+
+	{
+        {"proc_array_log_lock_threshold", PGC_SUSET, DEVELOPER_OPTIONS,
+        	gettext_noop("Print ProcArrayLock infomation to server log."),
+        	NULL
+        },
+        &proc_array_log_lock_threshold,
+		1000, -1, INT_MAX,
         NULL, NULL, NULL
     },
 

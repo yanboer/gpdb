@@ -617,6 +617,11 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 	{
 		int			extraWaits = 0;
 
+
+		TimestampTz lock_wait_start;
+		long duration;
+		lock_wait_start = GetCurrentTimestamp();
+
 		/* Sleep until the leader clears our XID. */
 		pgstat_report_wait_start(WAIT_EVENT_PROCARRAY_GROUP_UPDATE);
 		for (;;)
@@ -629,6 +634,9 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 		}
 		pgstat_report_wait_end();
 
+		duration = checkProcArrayLockDuration(lock_wait_start, GetCurrentTimestamp());
+		elog(((duration > 0) ? LOG : DEBUG5), "ProcArrayGroupClearXid Lock wait time: %ld milliseconds", duration);
+
 		Assert(pg_atomic_read_u32(&proc->procArrayGroupNext) == INVALID_PGPROCNO);
 
 		/* Fix semaphore count for any absorbed wakeups */
@@ -637,8 +645,12 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 		return;
 	}
 
+	long duration_acquire, duration_hold;
+	TimestampTz lock_acquire_start, lock_hold_start;
+	lock_acquire_start = GetCurrentTimestamp();
 	/* We are the leader.  Acquire the lock on behalf of everyone. */
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	lock_hold_start = GetCurrentTimestamp();
 
 	/*
 	 * Now that we've got the lock, clear the list of processes waiting for
@@ -650,6 +662,8 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 
 	/* Remember head of list so we can perform wakeups after dropping lock. */
 	wakeidx = nextidx;
+
+	int clearcnt = 0;
 
 	/* Walk the list and clear all XIDs. */
 	while (nextidx != INVALID_PGPROCNO)
@@ -669,10 +683,20 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 
 		/* Move to next proc in list. */
 		nextidx = pg_atomic_read_u32(&nextproc->procArrayGroupNext);
+
+		clearcnt++;
 	}
 
 	/* We're done with the lock now. */
 	LWLockRelease(ProcArrayLock);
+
+	duration_acquire = checkProcArrayLockDuration(lock_acquire_start, GetCurrentTimestamp());
+	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
+
+	if (duration_acquire > 0 || duration_hold > 0 ) {
+		elog(LOG, "ProcArrayGroupClearXid Lock acquire time: %ld milliseconds, list length is: %d", duration_acquire, clearcnt);
+		elog(LOG, "ProcArrayGroupClearXid Lock hold time: %ld milliseconds, list length is: %d", duration_hold, clearcnt);
+	}
 
 	/*
 	 * Now that we've released the lock, go back and wake everybody up.  We
@@ -696,6 +720,17 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 		if (nextproc != MyProc)
 			PGSemaphoreUnlock(nextproc->sem);
 	}
+}
+
+long
+checkProcArrayLockDuration(TimestampTz start_time, TimestampTz stop_time)
+{
+	long duration;
+	duration = TimestampDifferenceMilliseconds(start_time, stop_time);
+
+	if (proc_array_log_lock_threshold > 0 && duration > proc_array_log_lock_threshold)
+		return duration;
+	return 0;
 }
 
 /*

@@ -159,4 +159,7 @@ extern bool ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 extern void ResGroupMoveCheckTargetReady(int sessionId, bool *clean, bool *result);
 extern void ResGroupMoveNotifyInitiator(pid_t callerPid);
 
+/* test */
+extern long checkProcArrayLockDuration(TimestampTz start_time, TimestampTz stop_time);
+
 #endif							/* PROCARRAY_H */

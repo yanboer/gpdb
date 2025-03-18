@@ -570,3 +570,4 @@
 		"gp_log_distributedlogcontrollock_held_time",
 		"gp_advance_dlog_xid_limit",
 		"gp_disable_jdbc_cursor",
+		"proc_array_log_lock_threshold",

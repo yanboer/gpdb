@@ -826,4 +826,7 @@ extern int  gp_advance_dlog_xid_limit;
 /* jdbc */
 extern bool gp_disable_jdbc_cursor;
 
+/* test */
+extern int proc_array_log_lock_threshold;
+
 #endif							/* GUC_H */
