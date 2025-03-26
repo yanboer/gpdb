@@ -44,6 +44,7 @@
 #include "postgres.h"
 
 #include <signal.h>
+#include <sys/resource.h>
 
 #include "access/clog.h"
 #include "access/distributedlog.h"
@@ -2236,15 +2237,31 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 	Assert(ds->inProgressXidArray != NULL);
 
 	long duration1, duration2;
-	TimestampTz create_snapshot_start1, create_snapshot_start2;
+	TimestampTz create_snapshot_start1, create_snapshot_start2, create_snapshot_end;
+
+	// long loop_times[2048] = {-1};
+	// long max_loop_time = 0;
+	// long min_loop_time = LONG_MAX;
+	// int max_loop_index = -1;
+	// int min_loop_index = -1;
+
+	/* CPU time */
+	struct rusage create_distributed_usage1;
+	getrusage(RUSAGE_SELF, &create_distributed_usage1);
+	struct timeval create_snaphost_start1_cpu_user_time = create_distributed_usage1.ru_utime;
+	struct timeval create_snaphost_start1_cpu_sys_time = create_distributed_usage1.ru_stime;
 
 	create_snapshot_start1 = GetCurrentTimestamp();
+
 	/*
 	 * Gather up current in-progress global transactions for the distributed
 	 * snapshot.
 	 */
 	for (i = 0; i < arrayP->numProcs; i++)
 	{
+		// TimestampTz loop_start, loop_end;
+		// loop_start = GetCurrentTimestamp();
+
 		int         pgprocno = arrayP->pgprocnos[i];
 		volatile TMGXACT	*gxact_candidate = &allTmGxact[pgprocno];
 		DistributedTransactionId gxid;
@@ -2288,9 +2305,33 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "CreateDistributedSnapshot added inProgressDistributedXid = "UINT64_FORMAT" to snapshot",
 			 gxid);
+
+		// loop_end = GetCurrentTimestamp();
+
+		// long single_loop_time;
+		// if (loop_end >= loop_start) {
+		// 	single_loop_time = (long)(loop_end - loop_start);
+		// } else {
+		// 	single_loop_time = 0;
+		// 	// elog(LOG, "Time rollback detected: loop_start=%lld, loop_end=%lld", loop_start, loop_end);
+		// }
+
+		// loop_times[i] = single_loop_time;
+		// if (single_loop_time > max_loop_time) {
+		// 	max_loop_time = single_loop_time;
+		// 	max_loop_index = i;
+		// }
+		// if (single_loop_time < min_loop_time) {
+		// 	min_loop_time = single_loop_time;
+		// 	min_loop_index = i;
+		// }
 	}
 
 	create_snapshot_start2 = GetCurrentTimestamp();
+	struct rusage create_distributed_usage2;
+	getrusage(RUSAGE_SELF, &create_distributed_usage2);
+    struct timeval create_snaphost_start2_cpu_user_time = create_distributed_usage2.ru_utime;
+    struct timeval create_snaphost_start2_cpu_sys_time = create_distributed_usage2.ru_stime;
 
 	distribSnapshotId = pg_atomic_add_fetch_u32((pg_atomic_uint32 *)shmNextSnapshotId, 1);
 
@@ -2323,12 +2364,38 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 		 distribSnapshotId,
 		 MyTmGxact->gxid);
 
-	duration1 = checkProcArrayLockDuration(create_snapshot_start1, GetCurrentTimestamp());
-	duration2 = checkProcArrayLockDuration(create_snapshot_start2, GetCurrentTimestamp());
+	create_snapshot_end = GetCurrentTimestamp();
+	duration1 = checkProcArrayLockDuration(create_snapshot_start1, create_snapshot_end);
+	duration2 = checkProcArrayLockDuration(create_snapshot_start2, create_snapshot_end);
 
 	if (duration1 > 0 || duration2 > 0) {
 		elog(LOG, "CreateDistributedSnapshot Lock hold time(duration1): %ld milliseconds, count: %d", duration1, count);
 		elog(LOG, "CreateDistributedSnapshot Lock hold time(duration2): %ld milliseconds, count: %d", duration2, count);
+
+		long cpu_user_time = (create_snaphost_start2_cpu_user_time.tv_sec - create_snaphost_start1_cpu_user_time.tv_sec) * 1000000 +
+		(create_snaphost_start2_cpu_user_time.tv_usec - create_snaphost_start1_cpu_user_time.tv_usec);
+
+		long cpu_sys_time = (create_snaphost_start2_cpu_sys_time.tv_sec - create_snaphost_start1_cpu_sys_time.tv_sec) * 1000000 +
+		(create_snaphost_start2_cpu_sys_time.tv_usec - create_snaphost_start1_cpu_sys_time.tv_usec);
+
+		elog(LOG, "CreateDistributedSnapshot Lock hold time(duration1) CPU user time: %ld μs, CPU sys time: %ld μs", cpu_user_time, cpu_sys_time);
+
+		// for (int j = 0; j < arrayP->numProcs; j++) {
+		// 	elog(LOG, "CreateDistributedSnapshot loop time[%d]: %lldμs", j, loop_times[j]);
+		// }
+
+		// StringInfoData log_buffer;
+		// initStringInfo(&log_buffer);
+
+		// for (int j = 0; j < arrayP->numProcs; j++) {
+		// 	appendStringInfo(&log_buffer, "[%d]=%ldμs,", j, loop_times[j]);
+		// 	// appendStringInfo(&log_buffer, "[%d]=%lldμs,", j, loop_times[j]);
+		// }
+
+		// elog(LOG, "All loop execution times: %s max_loop_time: %ld, max_loop_index: %d, min_loop_time: %ld, min_loop_index: %d", 
+		// 		log_buffer.data, max_loop_time, max_loop_index, min_loop_time, min_loop_index);
+
+		// pfree(log_buffer.data);
 	}
 
 	return true;
@@ -2551,6 +2618,17 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	snapshot->takenDuringRecovery = RecoveryInProgress();
 
+	long duration_create_local_snapshot;
+	TimestampTz create_local_snapshot_start;
+
+	create_local_snapshot_start = GetCurrentTimestamp();
+
+	/* CPU time */
+	struct rusage create_local_snapshot_usage1;
+	getrusage(RUSAGE_SELF, &create_local_snapshot_usage1);
+	struct timeval create_local_snaphost_start1_cpu_user_time = create_local_snapshot_usage1.ru_utime;
+	struct timeval create_local_snaphost_start1_cpu_sys_time = create_local_snapshot_usage1.ru_stime;
+
 	if (!snapshot->takenDuringRecovery)
 	{
 		int		   *pgprocnos = arrayP->pgprocnos;
@@ -2683,6 +2761,13 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 			suboverflowed = true;
 	}
 
+	duration_create_local_snapshot = checkProcArrayLockDuration(create_local_snapshot_start, GetCurrentTimestamp());
+
+	/* CPU time */
+	struct rusage create_local_snapshot_usage2;
+	getrusage(RUSAGE_SELF, &create_local_snapshot_usage2);
+	struct timeval create_local_snaphost_start2_cpu_user_time = create_local_snapshot_usage2.ru_utime;
+	struct timeval create_local_snaphost_start2_cpu_sys_time = create_local_snapshot_usage2.ru_stime;
 
 	/*
 	 * Fetch into local variable while ProcArrayLock is held - the
@@ -2699,20 +2784,17 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		MyPgXact->xmin = TransactionXmin = xmin;
 	}
 
-	long duration_create_snapshot;
-	TimestampTz create_snapshot_start;
+	long duration_create_distributed_snapshot = 0;
+	TimestampTz create_distributed_snapshot_start;
 
 	/* GP: QD takes a distributed snapshot iff QD not in retry phase and the query needs distributed snapshot */
 	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot 
 			&& needDistributedSnapshot)
 	{
-		create_snapshot_start = GetCurrentTimestamp();
+		create_distributed_snapshot_start = GetCurrentTimestamp();
 		CreateDistributedSnapshot(ds);
 
-		duration_create_snapshot = checkProcArrayLockDuration(create_snapshot_start, GetCurrentTimestamp());
-		if (duration_create_snapshot > 0) {
-			elog(LOG, "CreateDistributedSnapshot Lock hold time: %ld milliseconds", duration_create_snapshot);
-		}
+		duration_create_distributed_snapshot = checkProcArrayLockDuration(create_distributed_snapshot_start, GetCurrentTimestamp());
 
 		snapshot->haveDistribSnapshot = true;
 
@@ -2726,6 +2808,15 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	duration_hold = checkProcArrayLockDuration(lock_hold_start, GetCurrentTimestamp());
 
 	if (duration_acquire > 0 || duration_hold > 0 ) {
+		long cpu_user_time = (create_local_snaphost_start2_cpu_user_time.tv_sec - create_local_snaphost_start1_cpu_user_time.tv_sec) * 1000000 +
+		(create_local_snaphost_start2_cpu_user_time.tv_usec - create_local_snaphost_start1_cpu_user_time.tv_usec);
+
+		long cpu_sys_time = (create_local_snaphost_start2_cpu_sys_time.tv_sec - create_local_snaphost_start1_cpu_sys_time.tv_sec) * 1000000 +
+		(create_local_snaphost_start2_cpu_sys_time.tv_usec - create_local_snaphost_start1_cpu_sys_time.tv_usec);
+
+		elog(LOG, "GetSnapshotData CreateLocalSnapshot Lock hold time CPU user time: %ld μs, CPU sys time: %ld μs", cpu_user_time, cpu_sys_time);
+		elog(LOG, "GetSnapshotData duration_create_local_snapshot Lock hold time: %ld milliseconds", duration_create_local_snapshot);
+		elog(LOG, "GetSnapshotData duration_create_distributed_snapshot Lock hold time: %ld milliseconds", duration_create_distributed_snapshot);
 		elog(LOG, "GetSnapshotData Lock acquire time: %ld milliseconds", duration_acquire);
 		elog(LOG, "GetSnapshotData Lock hold time: %ld milliseconds", duration_hold);
 	}
