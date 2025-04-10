@@ -450,7 +450,6 @@ bool		gp_enable_blkdir_sampling;
 /* distributed log truncate */
 bool gp_print_dlog_truncate_info = false;
 bool gp_print_dlog_advance_xid_info = false;
-int gp_log_distributedlogcontrollock_held_time = 1000;
 int gp_advance_dlog_xid_limit = 40960;
 
 /* jdbc */
@@ -4396,16 +4395,6 @@ struct config_int ConfigureNamesInt_gp[] =
 		NULL, NULL, NULL
 	},
 #endif
-
-    {
-        {"gp_log_distributedlogcontrollock_held_time", PGC_SUSET, DEVELOPER_OPTIONS,
-        	gettext_noop("Print DistributedLogControlLock exclusive lock infomation to server log."),
-        	NULL
-        },
-        &gp_log_distributedlogcontrollock_held_time,
-		1000, -1, INT_MAX,
-        NULL, NULL, NULL
-    },
 
     {
         {"gp_advance_dlog_xid_limit", PGC_SUSET, DEVELOPER_OPTIONS,
