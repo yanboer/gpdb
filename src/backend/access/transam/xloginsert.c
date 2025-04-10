@@ -40,6 +40,12 @@
 #define COMPRESS_LEVEL 3
 #endif
 
+#ifdef USE_ZSTD
+	#define ZSTD_MAX_BLCKSZ		ZSTD_COMPRESSBOUND(BLCKSZ)
+#else
+	#define ZSTD_MAX_BLCKSZ		0
+#endif
+
 /*
  * For each block reference registered with XLogRegisterBuffer, we fill in
  * a registered_buffer struct.
@@ -62,7 +68,7 @@ typedef struct
 								 * backup block data in XLogRecordAssemble() */
 
 	/* buffer to store a compressed version of backup block image */
-	char		compressed_page[BLCKSZ];
+	char		compressed_page[ZSTD_MAX_BLCKSZ];
 } registered_buffer;
 
 static registered_buffer *registered_buffers;
@@ -856,7 +862,7 @@ XLogCompressBackupBlock(char *page, uint16 hole_offset, uint16 hole_length,
 	}
 
 	len = ZSTD_compressCCtx(cxt,
-							dest, BLCKSZ,
+							dest, ZSTD_MAX_BLCKSZ,
 							source, orig_len,
 							COMPRESS_LEVEL);
 
