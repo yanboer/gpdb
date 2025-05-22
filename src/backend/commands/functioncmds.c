@@ -682,6 +682,8 @@ interpret_exec_location(DefElem *defel)
 		exec_location = PROEXECLOCATION_INITPLAN;
 	else if (strcmp(str, "all_segments") == 0)
 		exec_location = PROEXECLOCATION_ALL_SEGMENTS;
+	else if (strcmp(str, "randomly_segment") == 0)
+		exec_location = PROEXECLOCATION_RANDOMLY_SEGMENT;
 	else
 		elog(ERROR, "invalid exec location \"%s\"", str);
 
@@ -721,6 +723,13 @@ validate_sql_exec_location(char exec_location, bool proretset)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("EXECUTE ON ALL SEGMENTS is only supported for set-returning functions")));
+			break;
+
+		case PROEXECLOCATION_RANDOMLY_SEGMENT:
+			if (!proretset)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("EXECUTE ON RANDOMLY SEGMENT is only supported for set-returning functions")));
 			break;
 
 		default:

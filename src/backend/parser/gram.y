@@ -10578,6 +10578,10 @@ common_func_opt_item:
 				{
 					$$ = makeDefElem("exec_location", (Node *)makeString("all_segments"), @1);
 				}
+			| EXECUTE ON RANDOMLY SEGMENT
+				{
+					$$ = makeDefElem("exec_location", (Node *)makeString("randomly_segment"), @1);
+				}
 		;
 
 createfunc_opt_item:

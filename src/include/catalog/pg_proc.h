@@ -193,6 +193,7 @@ typedef FormData_pg_proc *Form_pg_proc;
 #define PROEXECLOCATION_COORDINATOR	'c'
 #define PROEXECLOCATION_INITPLAN 'i'
 #define PROEXECLOCATION_ALL_SEGMENTS 's'
+#define PROEXECLOCATION_RANDOMLY_SEGMENT 'r'
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 

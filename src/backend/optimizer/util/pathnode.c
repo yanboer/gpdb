@@ -2877,11 +2877,11 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 						/*
 						 * This function forces the execution to coordinator.
 						 */
-						if (exec_location == PROEXECLOCATION_ALL_SEGMENTS)
+						if (exec_location == PROEXECLOCATION_ALL_SEGMENTS || exec_location == PROEXECLOCATION_RANDOMLY_SEGMENT)
 						{
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 (errmsg("cannot mix EXECUTE ON COORDINATOR and ALL SEGMENTS functions in same function scan"))));
+									 (errmsg("cannot mix EXECUTE ON COORDINATOR, EXECUTE ON ALL SEGMENTS, EXECUTE ON RANDOMLY SEGMENT functions in same function scan"))));
 						}
 						exec_location = PROEXECLOCATION_COORDINATOR;
 						break;
@@ -2889,11 +2889,11 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 						/*
 						 * This function forces the execution to coordinator.
 						 */
-						if (exec_location == PROEXECLOCATION_ALL_SEGMENTS)
+						if (exec_location == PROEXECLOCATION_ALL_SEGMENTS || exec_location == PROEXECLOCATION_RANDOMLY_SEGMENT)
 						{
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 (errmsg("cannot mix EXECUTE ON INITPLAN and ALL SEGMENTS functions in same function scan"))));
+									 (errmsg("cannot mix EXECUTE ON INITPLAN, EXECUTE ON ALL SEGMENTS, EXECUTE ON RANDOMLY SEGMENT functions in same function scan"))));
 						}
 						exec_location = PROEXECLOCATION_INITPLAN;
 						break;
@@ -2901,13 +2901,25 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 						/*
 						 * This function forces the execution to segments.
 						 */
-						if (exec_location == PROEXECLOCATION_COORDINATOR)
+						if (exec_location == PROEXECLOCATION_COORDINATOR || exec_location == PROEXECLOCATION_RANDOMLY_SEGMENT)
 						{
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 (errmsg("cannot mix EXECUTE ON COORDINATOR and ALL SEGMENTS functions in same function scan"))));
+									 (errmsg("cannot mix EXECUTE ON ALL SEGMENTS, EXECUTE ON COORDINATOR, EXECUTE ON RANDOMLY SEGMENT functions in same function scan"))));
 						}
 						exec_location = PROEXECLOCATION_ALL_SEGMENTS;
+						break;
+					case PROEXECLOCATION_RANDOMLY_SEGMENT:
+						/*
+						 * This function forces the execution to segments.
+						 */
+						if (exec_location == PROEXECLOCATION_COORDINATOR || exec_location == PROEXECLOCATION_ALL_SEGMENTS)
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 (errmsg("cannot mix EXECUTE ON RANDOMLY SEGMENT, EXECUTE ON COORDINATOR, EXECUTE ON ALL SEGMENTS functions in same function scan"))));
+						}
+						exec_location = PROEXECLOCATION_RANDOMLY_SEGMENT;
 						break;
 					default:
 						elog(ERROR, "unrecognized proexeclocation '%c'", exec_location);
@@ -2957,6 +2969,12 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 				if (contain_outer_params)
 					elog(ERROR, "cannot execute EXECUTE ON ALL SEGMENTS function in a subquery with arguments from outer query");
 				CdbPathLocus_MakeStrewn(&pathnode->locus,
+										getgpsegmentCount());
+				break;
+			case PROEXECLOCATION_RANDOMLY_SEGMENT:
+				if (contain_outer_params)
+					elog(ERROR, "cannot execute EXECUTE ON RANDOMLY SEGMENT function in a subquery with arguments from outer query");
+				CdbPathLocus_MakeSegmentGeneral(&pathnode->locus,
 										getgpsegmentCount());
 				break;
 			default:

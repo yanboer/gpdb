@@ -12799,6 +12799,8 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 		appendPQExpBuffer(q, " EXECUTE ON COORDINATOR");
 	else if (proexeclocation[0] == PROEXECLOCATION_ALL_SEGMENTS)
 		appendPQExpBuffer(q, " EXECUTE ON ALL SEGMENTS");
+	else if (proexeclocation[0] == PROEXECLOCATION_RANDOMLY_SEGMENT)
+		appendPQExpBuffer(q, " EXECUTE ON RANDOMLY SEGMENT");
 	else if (proexeclocation[0] == PROEXECLOCATION_INITPLAN)
 		appendPQExpBuffer(q, " EXECUTE ON INITPLAN");
 	else
